@@ -9,12 +9,13 @@ if os.path.exists("README.md"):
 
 setup(
     name="masumi",
-    version="0.1.32",
+    version="0.1.33",
     packages=find_packages(),
     install_requires=[
         "aiohttp>=3.8.0",
         "pytest>=7.0.0",
-        "pytest-asyncio>=0.18.0"
+        "pytest-asyncio>=0.18.0",
+        "canonicaljson>=1.6.3",
     ],
     author="Patrick Tobler",
     author_email="patrick@nmkr.io",
