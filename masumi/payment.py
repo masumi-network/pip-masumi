@@ -7,7 +7,7 @@ import aiohttp
 from .config import Config
 import hashlib
 import json
-from .helper_functions import _hash_input
+from .helper_functions import _hash_input, _hash_output
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -230,13 +230,13 @@ class Payment:
             logger.error(f"Network error during status check: {str(e)}")
             raise
 
-    async def complete_payment(self, blockchain_identifier: str, submit_result_hash: str) -> Dict[str, Any]:
+    async def complete_payment(self, blockchain_identifier: str, job_output: dict) -> Dict[str, Any]:
         """
         Complete a payment by submitting the result hash.
         
         Args:
             blockchain_identifier (str): The blockchain identifier of the payment to complete
-            submit_result_hash (str): The hash of the submitted result
+            job_output (dict): The result of the job
             
         Returns:
             Dict[str, Any]: Response from the payment service
@@ -251,7 +251,7 @@ class Payment:
         payload = {
             "network": self.network,
             "blockchainIdentifier": blockchain_identifier,
-            "submitResultHash": submit_result_hash
+            "submitResultHash": _hash_output(job_output)
         }
         
         logger.debug(f"Payment completion payload: {payload}")

@@ -15,3 +15,11 @@ def _hash_input(input_data: dict, identifier_from_purchaser: str) -> str:
 
         # Hash the input JSON string using SHA-256
         return hashlib.sha256(input_json.encode()).hexdigest()
+
+
+def _hash_output(output_data: dict) -> str:
+    """Hash the output data using SHA-256 with canonical JSON encoding."""
+    output_json = canonicaljson.encode_canonical_json(output_data).decode('utf-8')
+    logger.debug(f"Canonical Output JSON: {output_json}")
+    return hashlib.sha256(output_json.encode()).hexdigest()
+
