@@ -188,15 +188,15 @@ class Payment:
             logger.error(f"Network error during payment request: {str(e)}")
             raise
 
-    async def check_payment_status(self, limit: int = 10) -> Dict[str, Any]:
+    async def check_payment_status(self, limit: int = 100) -> Dict[str, Any]:
         """
-        Check the status of all tracked payments.
+        Check the status of all tracked payments with pagination support.
         
         Args:
-            limit (int, optional): Number of payments to return. Defaults to 10.
+            limit (int, optional): Number of payments to return per page. Defaults to 100.
             
         Returns:
-            Dict[str, Any]: Response containing payment statuses
+            Dict[str, Any]: Response containing all payment statuses (paginated results combined)
             
         Raises:
             ValueError: If no payment IDs available
@@ -214,30 +214,56 @@ class Payment:
 
         logger.debug(f"Checking status for payment IDs: {self.payment_ids}")
         
-        # Build query parameters
-        params = {
-            'network': self.network,
-            'limit': limit
-        }
+        all_payments = []
+        cursor_id = None
         
         try:
             async with aiohttp.ClientSession() as session:
-                async with session.get(
-                    f"{self.config.payment_service_url}/payment/",
-                    headers=self._headers,
-                    params=params
-                ) as response:
-                    if response.status != 200:
-                        error_text = await response.text()
-                        logger.error(f"Status check failed: {error_text}")
-                        raise Exception(f"Status check failed: {error_text}")
+                while True:
+                    # Build query parameters
+                    params = {
+                        'network': self.network,
+                        'limit': limit
+                    }
                     
-                    result = await response.json()
-                    logger.debug(f"Received status response: {result}")
+                    # Add cursor for pagination if we have one
+                    if cursor_id:
+                        params['cursorId'] = cursor_id
                     
-                    # Don't automatically remove payments here - let the monitoring task handle that
-                    # Just return the result for processing by the caller
-                    return result
+                    async with session.get(
+                        f"{self.config.payment_service_url}/payment/",
+                        headers=self._headers,
+                        params=params
+                    ) as response:
+                        if response.status != 200:
+                            error_text = await response.text()
+                            logger.error(f"Status check failed: {error_text}")
+                            raise Exception(f"Status check failed: {error_text}")
+                        
+                        result = await response.json()
+                        logger.debug(f"Received status response page with cursor: {cursor_id}")
+                        
+                        # Extract payments from this page
+                        payments = result.get("data", {}).get("Payments", [])
+                        all_payments.extend(payments)
+                        
+                        # Check if there's a next page
+                        cursor_id = result.get("data", {}).get("cursorId")
+                        if not cursor_id or len(payments) < limit:
+                            # No more pages
+                            break
+                
+                # Return combined result
+                combined_result = {
+                    "status": "success",
+                    "data": {
+                        "Payments": all_payments
+                    }
+                }
+                
+                logger.debug(f"Retrieved {len(all_payments)} total payments across all pages")
+                return combined_result
+                
         except aiohttp.ClientError as e:
             logger.error(f"Network error during status check: {str(e)}")
             raise

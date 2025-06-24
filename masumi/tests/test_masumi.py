@@ -222,7 +222,7 @@ def payment():
         logger.error("Agent ID not found - registration test must be run first")
         raise RuntimeError("Registration test must be run before payment tests")
     
-    # Create unique identifier for this purchaser (15-25 chars) using random numbers
+    # Create unique identifier for this purchaser using random numbers
     if _purchaser_id is None:
         import random
         random_id = ''.join([str(random.randint(0, 9)) for _ in range(15)])
