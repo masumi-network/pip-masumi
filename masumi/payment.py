@@ -60,7 +60,7 @@ class Payment:
         
         Args:
             agent_identifier (str): Unique identifier for the agent
-            amounts (List[Amount]): List of payment amounts
+            amounts (List[Amount], optional): DEPRECATED - Payment amounts no longer used in API
             config (Config): Configuration object with API details
             network (str, optional): Network to use. Defaults to "PREPROD"
             preprod_address (str, optional): Custom preprod contract address
@@ -91,13 +91,16 @@ class Payment:
         #logger.debug(f"Payment amounts configured: {[f'{a.amount} {a.unit}' for a in amounts]}")
         logger.debug(f"Using purchaser identifier: {self.identifier_from_purchaser}")
 
-    async def create_payment_request(self) -> Dict[str, Any]:
+    async def create_payment_request(self, metadata: Optional[str] = None) -> Dict[str, Any]:
         """
         Create a new payment request.
         
         Creates a payment request with the specified amounts and adds the payment ID
         to the tracking set. The payment deadline is automatically set to 12 hours
         from creation.
+        
+        Args:
+            metadata (str, optional): Private metadata to be stored with the payment request
         
         Returns:
             Dict[str, Any]: Response from the payment service containing payment details
@@ -109,25 +112,33 @@ class Payment:
         """
         logger.info(f"Creating new payment request for agent {self.agent_identifier}")
         
-        future_time = datetime.now(timezone.utc) + timedelta(hours=12)
-        formatted_time = future_time.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
-        logger.debug(f"Payment deadline set to {formatted_time}")
+        # Set payByTime to 12 hours from now
+        pay_by_time = datetime.now(timezone.utc) + timedelta(hours=12)
+        pay_by_time_str = pay_by_time.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+        
+        # Set submitResultTime to 24 hours from now (after payByTime)
+        submit_result_time = datetime.now(timezone.utc) + timedelta(hours=24)
+        submit_result_time_str = submit_result_time.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+        
+        logger.debug(f"Payment deadline (payByTime) set to {pay_by_time_str}")
+        logger.debug(f"Submit result deadline set to {submit_result_time_str}")
 
         payload = {
             "agentIdentifier": self.agent_identifier,
             "network": self.network,
             "paymentType": self.payment_type,
-            "submitResultTime": formatted_time,
+            "payByTime": pay_by_time_str,
+            "submitResultTime": submit_result_time_str,
             "identifierFromPurchaser": self.identifier_from_purchaser
         }
-
-        # Only add RequestedFunds if amounts is set
-        if self.amounts:
-            payload["RequestedFunds"] = [{"amount": amt.amount, "unit": amt.unit} for amt in self.amounts]
 
         # Add input hash to payload if available
         if self.input_hash:
             payload["inputHash"] = self.input_hash
+
+        # Add metadata if provided
+        if metadata:
+            payload["metadata"] = metadata
 
         logger.info(f"Payment request payload prepared: {payload}")
 
@@ -160,6 +171,7 @@ class Payment:
                     
                     # Extract time values from the response
                     time_values = {
+                        "payByTime": result["data"]["payByTime"],
                         "submitResultTime": result["data"]["submitResultTime"],
                         "unlockTime": result["data"]["unlockTime"],
                         "externalDisputeUnlockTime": result["data"]["externalDisputeUnlockTime"]
