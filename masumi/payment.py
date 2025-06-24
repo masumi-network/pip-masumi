@@ -7,7 +7,7 @@ import aiohttp
 from .config import Config
 import hashlib
 import json
-from .helper_functions import _hash_input, _hash_output
+from .helper_functions import _hash_input, create_masumi_output_hash
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -251,7 +251,7 @@ class Payment:
         payload = {
             "network": self.network,
             "blockchainIdentifier": blockchain_identifier,
-            "submitResultHash": _hash_output(job_output)
+            "submitResultHash": create_masumi_output_hash(str(job_output), self.identifier_from_purchaser)
         }
         
         logger.debug(f"Payment completion payload: {payload}")
