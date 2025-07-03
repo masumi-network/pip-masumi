@@ -9,8 +9,9 @@ if os.path.exists("README.md"):
 
 setup(
     name="masumi",
-    version="0.1.38",
+    version="0.1.39",
     packages=find_packages(),
+    package_dir={'masumi': 'masumi'},
     install_requires=[
         "aiohttp>=3.8.0",
         "pytest>=7.0.0",

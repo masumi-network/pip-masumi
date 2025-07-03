@@ -1,0 +1,3 @@
+include masumi/*.py
+include masumi/tests/*.py
+recursive-include masumi *.py
