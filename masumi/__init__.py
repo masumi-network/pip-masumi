@@ -8,7 +8,7 @@ from .purchase import Purchase
 from .registry import Agent
 from .helper_functions import _hash_input, create_masumi_output_hash
 
-__version__ = "0.1.37"
+__version__ = "0.1.38"
 
 __all__ = [
     "Config",
