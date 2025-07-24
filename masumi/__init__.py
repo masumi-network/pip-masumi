@@ -6,9 +6,9 @@ from .config import Config
 from .payment import Payment, Amount
 from .purchase import Purchase
 from .registry import Agent
-from .helper_functions import _hash_input, create_masumi_output_hash
+from .helper_functions import create_masumi_input_hash, create_masumi_output_hash
 
-__version__ = "0.1.39"
+__version__ = "0.1.40"
 
 __all__ = [
     "Config",
@@ -16,6 +16,6 @@ __all__ = [
     "Amount",
     "Purchase",
     "Agent",
-    "_hash_input",
+    "create_masumi_input_hash",
     "create_masumi_output_hash",
 ]

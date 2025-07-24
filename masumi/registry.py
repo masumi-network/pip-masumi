@@ -29,10 +29,10 @@ class Agent:
         legal_other: str,
         capability_name: str,
         capability_version: str,
-        requests_per_hour: str,
         pricing_unit: str,
         pricing_quantity: str,
-        network: str = "Preprod"
+        network: str = "Preprod",
+        requests_per_hour: Optional[str] = None  # Deprecated parameter
     ):
         """
         Initialize a new Agent instance.
@@ -193,7 +193,8 @@ class Agent:
             "description": self.description,
             "Author": {
                 "name": self.author_name,
-                "contact": self.author_contact,
+                "contactEmail": self.author_contact,  # Using author_contact for email
+                "contactOther": "",  # Empty for now as we don't have a separate field
                 "organization": self.author_organization
             },
             "Legal": {
@@ -206,7 +207,6 @@ class Agent:
                 "name": self.capability_name,
                 "version": self.capability_version
             },
-            "requestsPerHour": self.requests_per_hour,
             "AgentPricing": {
                 "pricingType": "Fixed",
                 "Pricing": [

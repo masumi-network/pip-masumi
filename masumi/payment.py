@@ -435,3 +435,45 @@ class Payment:
         except aiohttp.ClientError as e:
             logger.error(f"Network error during purchase status check: {str(e)}")
             raise 
+    
+    async def authorize_refund(self, blockchain_identifier: str) -> Dict:
+        """
+        Authorize a refund request for a payment.
+        
+        This method allows the seller to authorize a refund that was requested by the buyer.
+        
+        Args:
+            blockchain_identifier (str): The blockchain identifier of the payment
+            
+        Returns:
+            dict: Response containing the updated payment information with refund authorization
+        """
+        logger.info(f"Authorizing refund for payment {blockchain_identifier}")
+        
+        payload = {
+            "network": self.network,
+            "blockchainIdentifier": blockchain_identifier
+        }
+        
+        logger.debug(f"Authorize refund payload: {payload}")
+        
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    f"{self.config.payment_service_url}/payment/authorize-refund",
+                    headers=self._headers,
+                    json=payload
+                ) as response:
+                    if response.status != 200:
+                        error_text = await response.text()
+                        logger.error(f"Authorize refund failed: {error_text}")
+                        raise ValueError(f"Authorize refund failed: {error_text}")
+                    
+                    result = await response.json()
+                    logger.info("Refund authorized successfully")
+                    logger.debug(f"Authorize refund response: {result}")
+                    return result
+                    
+        except aiohttp.ClientError as e:
+            logger.error(f"Network error during refund authorization: {str(e)}")
+            raise

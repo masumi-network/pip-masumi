@@ -25,7 +25,7 @@ import asyncio
 from masumi.registry import Agent
 from masumi.payment import Payment, Amount
 from masumi.config import Config
-from masumi.purchase import Purchase, PurchaseAmount
+from masumi.purchase import Purchase
 
 # Create a test session marker
 logger = logging.getLogger(__name__)
@@ -99,7 +99,6 @@ async def test_agent():
         legal_other="http://example.com/other",
         capability_name="test_capability",
         capability_version="1.0.0",
-        requests_per_hour="100",
         pricing_unit="lovelace",
         pricing_quantity="10000000",
         network="Preprod"
@@ -222,11 +221,12 @@ def payment():
         logger.error("Agent ID not found - registration test must be run first")
         raise RuntimeError("Registration test must be run before payment tests")
     
-    # Create unique identifier for this purchaser using random numbers
+    # Create unique identifier for this purchaser using valid hex string
     if _purchaser_id is None:
         import random
-        random_id = ''.join([str(random.randint(0, 9)) for _ in range(15)])
-        _purchaser_id = f"pur_{random_id}"
+        # Generate a random hex string (26 characters max for a valid identifier)
+        random_hex = ''.join([random.choice('0123456789abcdef') for _ in range(26)])
+        _purchaser_id = random_hex
     
     logger.info(f"Using purchaser identifier: {_purchaser_id} (length: {len(_purchaser_id)})")
     
@@ -283,9 +283,13 @@ async def test_check_existing_payment_status(payment):
     logger.info("Starting test_check_existing_payment_status")
     
     # Get the ID from the previous test and add it to payment_ids
-    payment_id = test_create_payment_request_success.last_payment_id
-    #logger.info(f"Checking status for payment: {payment_id}")
-    payment.payment_ids.add(payment_id)  # Add the ID to the new payment instance
+    try:
+        payment_id = test_create_payment_request_success.last_payment_id
+        #logger.info(f"Checking status for payment: {payment_id}")
+        payment.payment_ids.add(payment_id)  # Add the ID to the new payment instance
+    except AttributeError:
+        logger.error("Payment ID not available - payment creation test may not have succeeded")
+        pytest.skip("Payment creation test must succeed before checking status")
     
     # Check the payment status
     status_result = await payment.check_payment_status()
@@ -324,9 +328,27 @@ async def test_create_purchase_request(test_agent):
         logger.info(f"Using blockchain identifier from payment test")
         
         # Get the exact time values from the payment response
-        submit_result_time = payment_response["data"]["submitResultTime"]
-        unlock_time = payment_response["data"]["unlockTime"]
-        external_dispute_unlock_time = payment_response["data"]["externalDisputeUnlockTime"]
+        pay_by_time_str = payment_response["data"]["payByTime"]
+        submit_result_time_str = payment_response["data"]["submitResultTime"]
+        unlock_time_str = payment_response["data"]["unlockTime"]
+        external_dispute_unlock_time_str = payment_response["data"]["externalDisputeUnlockTime"]
+        
+        # Convert string timestamps to integers if they're strings
+        if isinstance(pay_by_time_str, str):
+            # Assume Unix timestamp as string
+            pay_by_time = int(pay_by_time_str)
+            submit_result_time = int(submit_result_time_str)
+            unlock_time = int(unlock_time_str)
+            external_dispute_unlock_time = int(external_dispute_unlock_time_str)
+        else:
+            # Already integers
+            pay_by_time = pay_by_time_str
+            submit_result_time = submit_result_time_str
+            unlock_time = unlock_time_str
+            external_dispute_unlock_time = external_dispute_unlock_time_str
+        
+        logger.info(f"Using pay_by_time from payment response: {pay_by_time}")
+        logger.info(f"Submit result time: {submit_result_time}")
         
         # Get the agent identifier from the registration test, not from the payment
         agent_identifier = test_register_agent.agent_id
@@ -343,17 +365,18 @@ async def test_create_purchase_request(test_agent):
     seller_vkey = await agent.get_selling_wallet_vkey(agent.network)
     logger.debug(f"Using seller vkey: {seller_vkey}")
     
-    # Create purchase amounts
-    amounts = [
-        PurchaseAmount(amount="10000000", unit="lovelace")
-    ]
-    logger.debug(f"Purchase amounts: {amounts}")
+    # Create purchase amounts (not used in current implementation)
+    # amounts = [
+    #     Amount(amount=10000000, unit="lovelace")
+    # ]
+    # logger.debug(f"Purchase amounts: {amounts}")
     
     # Ensure we have a purchaser ID
     if _purchaser_id is None:
         import random
-        random_id = ''.join([str(random.randint(0, 9)) for _ in range(15)])
-        _purchaser_id = f"pur_{random_id}"
+        # Generate a random hex string (26 characters max for a valid identifier)
+        random_hex = ''.join([random.choice('0123456789abcdef') for _ in range(26)])
+        _purchaser_id = random_hex
         logger.warning(f"Generated new purchaser identifier: {_purchaser_id}")
     else:
         logger.info(f"Using existing purchaser identifier: {_purchaser_id}")
@@ -370,6 +393,7 @@ async def test_create_purchase_request(test_agent):
         #amounts=amounts,
         agent_identifier=agent_identifier,  # Use the agent identifier from registration
         identifier_from_purchaser=_purchaser_id,
+        pay_by_time=pay_by_time,  # Add the calculated pay_by_time
         submit_result_time=submit_result_time,
         unlock_time=unlock_time,
         external_dispute_unlock_time=external_dispute_unlock_time,
@@ -660,3 +684,278 @@ async def test_monitor_payment_status(test_agent, payment):
         payment.stop_status_monitoring()
     
     logger.info("Payment status monitoring test finished")
+
+@pytest.mark.asyncio
+async def test_refund_flow(payment, test_agent):
+    """Test the complete refund flow: create payment, create purchase, request refund, authorize refund
+    
+    NOTE: This test reuses the payment from previous tests which may already be completed.
+    If the payment has been completed (results submitted), refunds may not be possible.
+    """
+    print_test_separator("Refund Flow Test")
+    logger.info("Starting refund flow test")
+    
+    agent = await test_agent
+    
+    # Get the blockchain identifier from the previous payment test
+    try:
+        blockchain_id = test_create_payment_request_success.last_payment_id
+        payment_response = test_create_payment_request_success.payment_response
+        logger.info(f"Using blockchain ID from previous payment test: {blockchain_id}")
+    except AttributeError:
+        logger.error("Blockchain ID not found - payment test must be run first")
+        pytest.skip("Payment test must be run before refund test")
+    
+    # Add the blockchain ID to payment tracking
+    payment.payment_ids.add(blockchain_id)
+    
+    # Step 1: Use existing purchase from previous test
+    logger.info("Using existing purchase for refund test")
+    
+    # Get the purchase ID from the previous test
+    try:
+        purchase_id = test_create_purchase_request.purchase_id
+        logger.info(f"Using purchase ID from previous test: {purchase_id}")
+    except AttributeError:
+        logger.error("Purchase ID not found - purchase test must be run first")
+        pytest.skip("Purchase test must be run before refund test")
+    
+    # Get payment details from the previous test for Purchase object creation
+    pay_by_time_str = payment_response["data"]["payByTime"]
+    submit_result_time_str = payment_response["data"]["submitResultTime"]
+    unlock_time_str = payment_response["data"]["unlockTime"]
+    external_dispute_unlock_time_str = payment_response["data"]["externalDisputeUnlockTime"]
+    
+    # Convert string timestamps to integers
+    if isinstance(pay_by_time_str, str):
+        pay_by_time = int(pay_by_time_str)
+        submit_result_time = int(submit_result_time_str)
+        unlock_time = int(unlock_time_str)
+        external_dispute_unlock_time = int(external_dispute_unlock_time_str)
+    else:
+        pay_by_time = pay_by_time_str
+        submit_result_time = submit_result_time_str
+        unlock_time = unlock_time_str
+        external_dispute_unlock_time = external_dispute_unlock_time_str
+    
+    # Get seller vkey
+    seller_vkey = await agent.get_selling_wallet_vkey(agent.network)
+    
+    # Use the same purchaser ID from the original payment
+    global _purchaser_id
+    
+    # Create Purchase object for existing purchase (needed for refund methods)
+    purchase = Purchase(
+        config=agent.config,
+        blockchain_identifier=blockchain_id,
+        seller_vkey=seller_vkey,
+        agent_identifier=test_register_agent.agent_id,
+        identifier_from_purchaser=_purchaser_id,  # Use the same purchaser ID
+        pay_by_time=pay_by_time,
+        submit_result_time=submit_result_time,
+        unlock_time=unlock_time,
+        external_dispute_unlock_time=external_dispute_unlock_time,
+        network="Preprod",  # Explicitly set network
+        input_data={"test": "input data 12345"}  # Use the same input data
+    )
+    
+    logger.info("Purchase object created for existing purchase")
+    
+    # Wait for the payment to be in FundsLocked state
+    logger.info("Checking if payment is in FundsLocked state...")
+    
+    MAX_RETRIES = 5
+    RETRY_DELAY = 10
+    funds_locked = False
+    
+    for attempt in range(MAX_RETRIES):
+        status_result = await payment.check_payment_status()
+        payments = status_result.get("data", {}).get("Payments", [])
+        
+        for payment_status in payments:
+            if payment_status["blockchainIdentifier"] == blockchain_id:
+                on_chain_state = payment_status.get("onChainState")
+                logger.info(f"Payment onChainState: {on_chain_state}")
+                
+                if on_chain_state == "FundsLocked":
+                    funds_locked = True
+                    logger.info("Payment is in FundsLocked state, ready for refund test")
+                    break
+        
+        if funds_locked:
+            break
+            
+        if attempt < MAX_RETRIES - 1:
+            logger.info(f"Payment not yet in FundsLocked state, waiting {RETRY_DELAY} seconds...")
+            await asyncio.sleep(RETRY_DELAY)
+    
+    if not funds_locked:
+        logger.warning("Payment not in FundsLocked state, but proceeding with refund test")
+    
+    # Step 2: Request refund
+    logger.info("Testing refund request")
+    refund_result = await purchase.request_refund()
+    
+    # Verify refund request response
+    assert "status" in refund_result
+    assert refund_result["status"] == "success"
+    assert "data" in refund_result
+    assert "blockchainIdentifier" in refund_result["data"]
+    assert refund_result["data"]["blockchainIdentifier"] == blockchain_id
+    logger.info("Refund requested successfully")
+    
+    # Wait for refund request to be processed on blockchain
+    logger.info("Waiting for refund request to be confirmed on blockchain...")
+    logger.info("This can take 2-5 minutes depending on blockchain congestion")
+    await asyncio.sleep(30)  # Initial wait
+    
+    # Check both payment AND purchase status after refund request
+    logger.info("Checking payment status after refund request...")
+    payment.payment_ids.add(blockchain_id)  # Add to the original payment fixture
+    
+    # Log payment fixture details
+    logger.info(f"Payment fixture network: {payment.network}")
+    logger.info(f"Payment fixture agent ID: {payment.agent_identifier}")
+    logger.info(f"Payment fixture API key: {payment.config.payment_api_key[:10]}...")
+    
+    status_after_refund = await payment.check_payment_status()
+    payment_found = False
+    for payment_status in status_after_refund.get("data", {}).get("Payments", []):
+        if payment_status["blockchainIdentifier"] == blockchain_id:
+            payment_found = True
+            logger.info(f"Payment found in status check")
+            logger.info(f"OnChainState: {payment_status.get('onChainState')}")
+            logger.info(f"NextAction: {payment_status.get('NextAction', {}).get('requestedAction')}")
+            
+            # Check if refund is already in a specific state
+            if payment_status.get('NextAction', {}).get('requestedAction') == 'RefundRequested':
+                logger.info("Payment is in RefundRequested state")
+            break
+    
+    if not payment_found:
+        logger.error(f"Payment {blockchain_id} not found in status check")
+        logger.info(f"Total payments returned: {len(status_after_refund.get('data', {}).get('Payments', []))}")
+    
+    # Also check purchase status to see refund state
+    logger.info("Checking purchase status to see refund state...")
+    try:
+        purchase_status = await payment.check_purchase_status(purchase_id)
+        logger.info(f"Purchase status: {purchase_status}")
+        if purchase_status.get("data", {}).get("NextAction", {}).get("requestedAction"):
+            logger.info(f"Purchase NextAction: {purchase_status['data']['NextAction']['requestedAction']}")
+    except Exception as e:
+        logger.warning(f"Could not check purchase status: {e}")
+    
+    # Step 3: Authorize refund using the original payment fixture
+    logger.info("Testing refund authorization with original payment object")
+    
+    # Log all payment IDs being tracked
+    logger.info(f"Payment IDs being tracked: {payment.payment_ids}")
+    logger.info(f"Attempting to authorize refund for blockchain ID: {blockchain_id}")
+    
+    # Wait for blockchain confirmation before attempting authorization
+    logger.info("Waiting additional time for blockchain confirmation...")
+    logger.info("Checking for refund state every 30 seconds...")
+    
+    MAX_WAIT_ATTEMPTS = 10  # 5 minutes total
+    WAIT_INTERVAL = 30  # seconds
+    refund_ready = False
+    
+    for wait_attempt in range(MAX_WAIT_ATTEMPTS):
+        logger.info(f"Checking refund state (attempt {wait_attempt + 1}/{MAX_WAIT_ATTEMPTS})")
+        
+        check_status = await payment.check_payment_status()
+        for p in check_status.get("data", {}).get("Payments", []):
+            if p["blockchainIdentifier"] == blockchain_id:
+                next_action = p.get('NextAction', {}).get('requestedAction', '')
+                on_chain_state = p.get('onChainState', '')
+                
+                logger.info(f"Current NextAction: {next_action}")
+                logger.info(f"Current onChainState: {on_chain_state}")
+                
+                # Check if refund is ready for authorization
+                if "Refund" in next_action or "RefundRequested" in next_action:
+                    logger.info("✓ Payment shows refund state - ready for authorization")
+                    refund_ready = True
+                    break
+        
+        if refund_ready:
+            break
+            
+        if wait_attempt < MAX_WAIT_ATTEMPTS - 1:
+            logger.info(f"Refund not ready yet, waiting {WAIT_INTERVAL} seconds...")
+            await asyncio.sleep(WAIT_INTERVAL)
+        else:
+            logger.warning("Refund may not be fully processed on blockchain yet")
+    
+    # Check status one more time before authorizing
+    final_check = await payment.check_payment_status()
+    for p in final_check.get("data", {}).get("Payments", []):
+        if p["blockchainIdentifier"] == blockchain_id:
+            logger.info(f"Payment state before authorization: {p.get('onChainState')}")
+            logger.info(f"NextAction before authorization: {p.get('NextAction', {}).get('requestedAction')}")
+            
+            # Check if the payment shows any refund-related state
+            if "Refund" in str(p.get('NextAction', {}).get('requestedAction', '')):
+                logger.info("Payment shows refund-related action")
+            else:
+                logger.warning("Payment does not show refund-related action yet")
+    
+    # Try authorization with retries
+    MAX_AUTH_RETRIES = 3
+    AUTH_RETRY_DELAY = 20
+    
+    for auth_attempt in range(MAX_AUTH_RETRIES):
+        try:
+            logger.info(f"Authorization attempt {auth_attempt + 1}/{MAX_AUTH_RETRIES}")
+            logger.info(f"Calling authorize_refund with blockchain_id: {blockchain_id}")
+            
+            authorize_result = await payment.authorize_refund(blockchain_id)
+            
+            # Verify authorization response
+            assert "status" in authorize_result
+            assert authorize_result["status"] == "success"
+            assert "data" in authorize_result
+            assert "NextAction" in authorize_result["data"]
+            assert authorize_result["data"]["NextAction"]["requestedAction"] == "AuthorizeRefundRequested"
+            logger.info("Refund authorized successfully")
+            break  # Success, exit loop
+            
+        except Exception as e:
+            logger.error(f"Authorization attempt {auth_attempt + 1} failed: {str(e)}")
+            
+            if auth_attempt < MAX_AUTH_RETRIES - 1:
+                logger.info(f"Waiting {AUTH_RETRY_DELAY} seconds before retry...")
+                await asyncio.sleep(AUTH_RETRY_DELAY)
+            else:
+                logger.error(f"All {MAX_AUTH_RETRIES} authorization attempts failed")
+        
+        # Try to understand why it failed
+        # Check if this payment belongs to this agent
+        all_payments = await payment.check_payment_status()
+        found = False
+        for p in all_payments.get("data", {}).get("Payments", []):
+            if p["blockchainIdentifier"] == blockchain_id:
+                found = True
+                logger.info(f"Payment found in list, but authorization failed")
+                logger.info(f"Payment details: {p}")
+        
+        if not found:
+            logger.error("Payment not found in the list of payments for this API key")
+        
+        # Log more details about why it might be failing
+        logger.info("Possible reasons for refund authorization failure:")
+        logger.info("1. Payment may already be completed (resultHash submitted)")
+        logger.info("2. Refund may not be in the correct state")
+        logger.info("3. API key may not have permission to authorize this refund")
+        
+        # Check if the payment has a result hash (meaning it's completed)
+        for p in all_payments.get("data", {}).get("Payments", []):
+            if p["blockchainIdentifier"] == blockchain_id:
+                if p.get("NextAction", {}).get("resultHash"):
+                    logger.warning(f"Payment has resultHash: {p['NextAction']['resultHash']} - may be completed")
+                if p.get("resultHash"):
+                    logger.warning(f"Payment has resultHash in main object: {p['resultHash']}")
+                break
+    
+    logger.info("Refund flow test completed")

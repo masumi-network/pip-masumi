@@ -114,3 +114,67 @@ class Purchase:
         except aiohttp.ClientError as e:
             logger.error(f"Network error during purchase request: {str(e)}")
             raise
+    
+    async def request_refund(self) -> Dict:
+        """Request a refund for this purchase"""
+        logger.info(f"Requesting refund for purchase {self.blockchain_identifier}")
+        
+        payload = {
+            "network": self.network,
+            "blockchainIdentifier": self.blockchain_identifier
+        }
+        
+        logger.debug(f"Refund request payload: {payload}")
+        
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    f"{self.config.payment_service_url}/purchase/request-refund",
+                    headers=self._headers,
+                    json=payload
+                ) as response:
+                    if response.status != 200:
+                        error_text = await response.text()
+                        logger.error(f"Refund request failed: {error_text}")
+                        raise ValueError(f"Refund request failed: {error_text}")
+                    
+                    result = await response.json()
+                    logger.info("Refund requested successfully")
+                    logger.debug(f"Refund response: {result}")
+                    return result
+                    
+        except aiohttp.ClientError as e:
+            logger.error(f"Network error during refund request: {str(e)}")
+            raise
+    
+    async def cancel_refund_request(self) -> Dict:
+        """Cancel a pending refund request for this purchase"""
+        logger.info(f"Cancelling refund request for purchase {self.blockchain_identifier}")
+        
+        payload = {
+            "network": self.network,
+            "blockchainIdentifier": self.blockchain_identifier
+        }
+        
+        logger.debug(f"Cancel refund payload: {payload}")
+        
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    f"{self.config.payment_service_url}/purchase/cancel-refund-request",
+                    headers=self._headers,
+                    json=payload
+                ) as response:
+                    if response.status != 200:
+                        error_text = await response.text()
+                        logger.error(f"Cancel refund request failed: {error_text}")
+                        raise ValueError(f"Cancel refund request failed: {error_text}")
+                    
+                    result = await response.json()
+                    logger.info("Refund request cancelled successfully")
+                    logger.debug(f"Cancel refund response: {result}")
+                    return result
+                    
+        except aiohttp.ClientError as e:
+            logger.error(f"Network error during cancel refund request: {str(e)}")
+            raise
