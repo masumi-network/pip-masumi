@@ -5,9 +5,8 @@ import logging
 from typing import List, Optional, Dict, Any, Set, Callable
 import aiohttp
 from .config import Config
-import hashlib
 import json
-from .helper_functions import _hash_input, create_masumi_output_hash
+from .helper_functions import create_masumi_input_hash, create_masumi_output_hash
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -85,7 +84,11 @@ class Payment:
             "Content-Type": "application/json"
         }
         # Hash the input data if provided
-        self.input_hash = _hash_input(input_data, self.identifier_from_purchaser) if input_data else None
+        self.input_hash = (
+            create_masumi_input_hash(input_data, self.identifier_from_purchaser)
+            if input_data
+            else None
+        )
         logger.debug(f"Input data: {input_data}")
         logger.debug(f"Input hash: {self.input_hash}")
         #logger.debug(f"Payment amounts configured: {[f'{a.amount} {a.unit}' for a in amounts]}")
@@ -268,13 +271,13 @@ class Payment:
             logger.error(f"Network error during status check: {str(e)}")
             raise
 
-    async def complete_payment(self, blockchain_identifier: str, job_output: dict) -> Dict[str, Any]:
+    async def complete_payment(self, blockchain_identifier: str, job_output: str) -> Dict[str, Any]:
         """
         Complete a payment by submitting the result hash.
         
         Args:
             blockchain_identifier (str): The blockchain identifier of the payment to complete
-            job_output (dict): The result of the job
+            job_output (str): The raw output string produced by the job
             
         Returns:
             Dict[str, Any]: Response from the payment service
@@ -285,11 +288,19 @@ class Payment:
         """
         #logger.info(f"Completing payment with blockchain identifier: {blockchain_identifier}")
         
+        if not isinstance(job_output, str):
+            raise TypeError("job_output must be a string")
+
+        result_hash = create_masumi_output_hash(
+            job_output,
+            self.identifier_from_purchaser
+        )
+
         # Create the payload for the submit-result endpoint
         payload = {
             "network": self.network,
             "blockchainIdentifier": blockchain_identifier,
-            "submitResultHash": create_masumi_output_hash(str(job_output), self.identifier_from_purchaser)
+            "submitResultHash": result_hash
         }
         
         logger.debug(f"Payment completion payload: {payload}")

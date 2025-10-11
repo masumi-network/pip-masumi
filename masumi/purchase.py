@@ -2,8 +2,7 @@ from typing import Dict, Optional
 import logging
 import aiohttp
 from .config import Config
-import hashlib
-from .helper_functions import _hash_input
+from .helper_functions import create_masumi_input_hash
 
 
 logger = logging.getLogger(__name__)
@@ -40,7 +39,11 @@ class Purchase:
         self.submit_result_time = submit_result_time
         self.unlock_time = unlock_time
         self.external_dispute_unlock_time = external_dispute_unlock_time
-        self.input_hash = _hash_input(input_data, self.identifier_from_purchaser) if input_data else None
+        self.input_hash = (
+            create_masumi_input_hash(input_data, self.identifier_from_purchaser)
+            if input_data
+            else None
+        )
         
         self._headers = {
             "token": config.payment_api_key,

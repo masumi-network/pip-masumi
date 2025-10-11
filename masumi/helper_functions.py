@@ -1,4 +1,5 @@
 import hashlib
+import json
 import canonicaljson
 import logging as logger
 
@@ -29,21 +30,14 @@ def create_masumi_input_hash(input_data: dict, identifier_from_purchaser: str) -
 def create_masumi_output_hash(output_string: str, identifier_from_purchaser: str) -> str:
     """
     Creates an output hash according to MIP-004.
-    This function uses the raw output string as the payload.
+    This function uses the raw output string as the payload and applies
+    JSON escaping to match the reference implementation.
     """
-    # Step 2.1: The output is a raw string, so no special processing is needed.
-    # Call the core hashing function with the raw data.
-    return _create_hash_from_payload(output_string, identifier_from_purchaser)
+    if not isinstance(output_string, str):
+        raise TypeError("output_string must be a string")
 
-# Legacy function names for backward compatibility
-def _hash_input(input_data: dict, identifier_from_purchaser: str) -> str:
-    """Legacy function - use create_masumi_input_hash instead."""
-    return create_masumi_input_hash(input_data, identifier_from_purchaser)
+    # Step 2.1: Escape special characters in the result string using JSON encoding
+    escaped_output = json.dumps(output_string, ensure_ascii=False)[1:-1]
 
-def _hash_output(output_data: dict) -> str:
-    """Legacy function - NOTE: This function signature is deprecated and doesn't follow MIP-004."""
-    # For backward compatibility, convert dict to JSON string and hash without identifier
-    output_json = canonicaljson.encode_canonical_json(output_data).decode('utf-8')
-    logger.debug(f"Canonical Output JSON: {output_json}")
-    return hashlib.sha256(output_json.encode()).hexdigest()
-
+    # Call the core hashing function with the processed data.
+    return _create_hash_from_payload(escaped_output, identifier_from_purchaser)

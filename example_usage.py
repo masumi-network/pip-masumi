@@ -5,10 +5,10 @@ This shows a complete workflow from agent registration to payment processing
 """
 
 import asyncio
+import json
 import os
 from datetime import datetime, timedelta
 from masumi import Config, Agent, Payment, Purchase
-from masumi.helper_functions import create_masumi_input_hash, create_masumi_output_hash
 
 # Example 1: Basic Agent Registration and Payment Flow
 async def basic_ai_agent_example():
@@ -81,11 +81,11 @@ async def basic_ai_agent_example():
             print("Payment confirmed - processing request...")
             
             # Do your AI processing here
-            result = await process_ai_request(status_data.get("inputData"))
-            
-            # Submit the result
-            output_hash = create_masumi_output_hash(result)
-            await payment.complete_payment(blockchain_id, output_hash)
+            result_payload = await process_ai_request(status_data.get("inputData"))
+            result_string = json.dumps(result_payload, separators=(",", ":"), ensure_ascii=False)
+
+            # Submit the result string (hashing handled inside complete_payment)
+            await payment.complete_payment(blockchain_id, result_string)
             print("Work completed and submitted!")
     
     # Start monitoring (runs in background)
@@ -228,12 +228,12 @@ class AIServiceProvider:
             try:
                 # Payment confirmed - process the AI request
                 input_data = status_data.get("inputData", {})
-                result = await self.run_ai_model(input_data)
-                
-                # Submit results
-                output_hash = create_masumi_output_hash(result)
+                result_payload = await self.run_ai_model(input_data)
+                result_string = json.dumps(result_payload, separators=(",", ":"), ensure_ascii=False)
+
+                # Submit results (hashing handled inside complete_payment)
                 payment = self.active_payments[payment_id]
-                await payment.complete_payment(payment_id, output_hash)
+                await payment.complete_payment(payment_id, result_string)
                 
                 print(f"Completed AI service for payment {payment_id}")
                 

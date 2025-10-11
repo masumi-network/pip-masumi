@@ -101,11 +101,13 @@ Manages payment requests from the seller's perspective.
 **Key Methods:**
 - `create_payment_request()` - Create a new payment request
 - `check_payment_status()` - Check status of payments
-- `complete_payment(blockchain_identifier, result_hash)` - Submit work results
+- `complete_payment(blockchain_identifier, output_string)` - Submit work results
 - `start_status_monitoring(callback, check_interval)` - Monitor payment status with callback
 - `authorize_refund(blockchain_identifier)` - Authorize a refund request
 
 ```python
+import json
+
 payment = Payment(
     agent_identifier="your_agent_id",
     config=config,
@@ -125,8 +127,8 @@ await payment.start_status_monitoring(
 )
 
 # Complete payment with results
-result_hash = create_masumi_output_hash({"result": "completed"})
-await payment.complete_payment(blockchain_id, result_hash)
+output_string = json.dumps({"result": "completed"}, separators=(",", ":"), ensure_ascii=False)
+await payment.complete_payment(blockchain_id, output_string)
 ```
 
 ### Purchase
@@ -168,6 +170,7 @@ cancel_result = await purchase.cancel_refund_request()
 For creating standardized hashes required by the Masumi protocol:
 
 ```python
+import json
 from masumi.helper_functions import create_masumi_input_hash, create_masumi_output_hash
 
 # Hash input data for payment request
@@ -177,7 +180,11 @@ input_hash = create_masumi_input_hash(
 )
 
 # Hash output data for payment completion
-output_hash = create_masumi_output_hash({"result": "completed"})
+output_hash = create_masumi_output_hash("work completed", "purchaser_id")
+
+# If your AI result is structured data, serialize it first:
+output_string = json.dumps({"result": "completed"}, separators=(",", ":"), ensure_ascii=False)
+output_hash = create_masumi_output_hash(output_string, "purchaser_id")
 ```
 
 ## Time-based Transaction Flow
@@ -204,8 +211,8 @@ The Masumi protocol uses time-based controls for secure transactions:
 
 ```python
 import asyncio
+import json
 from masumi import Config, Agent, Payment, Purchase
-from masumi.helper_functions import create_masumi_output_hash
 
 async def payment_flow():
     # Setup
@@ -231,10 +238,10 @@ async def payment_flow():
     purchase_result = await purchase.create_purchase_request()
     
     # Seller completes work and submits results
-    output_hash = create_masumi_output_hash({"result": "work completed"})
+    output_string = json.dumps({"result": "work completed"}, separators=(",", ":"), ensure_ascii=False)
     await payment.complete_payment(
         payment_result["data"]["blockchainIdentifier"],
-        output_hash
+        output_string
     )
 
 asyncio.run(payment_flow())
