@@ -22,7 +22,6 @@ logging.getLogger().addHandler(logging.StreamHandler(sys.stdout))
 
 import pytest
 import asyncio
-from masumi.registry import Agent
 from masumi.payment import Payment, Amount
 from masumi.config import Config
 from masumi.purchase import Purchase
