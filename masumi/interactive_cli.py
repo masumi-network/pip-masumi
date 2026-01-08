@@ -283,9 +283,8 @@ def show_completion_message(project_name: str, output_dir: str):
     print(f"{Colors.BOLD}Location:{Colors.RESET} {Colors.CYAN}{output_dir}{Colors.RESET}\n")
     
     print(f"{Colors.BOLD}Next steps:{Colors.RESET}")
-    print(f"  {Colors.GREEN}1.{Colors.RESET} cd {output_dir}")
-    print(f"  {Colors.GREEN}2.{Colors.RESET} pip install -r requirements.txt")
-    print(f"  {Colors.GREEN}3.{Colors.RESET} cp .env.example .env")
+    print(f"  {Colors.GREEN}1-3.{Colors.RESET} Quick setup (copy & paste):")
+    print(f"     {Colors.CYAN}cd {output_dir} && pip install -r requirements.txt && cp .env.example .env{Colors.RESET}")
     print(f"  {Colors.GREEN}4.{Colors.RESET} Edit .env with your configuration")
     print(f"  {Colors.GREEN}5.{Colors.RESET} masumi run main.py\n")
     
