@@ -336,13 +336,16 @@ def scaffold_command(args):
     if "--help" in args or "-h" in args:
         print("Masumi Agent Builder CLI - Scaffold Command")
         print("=" * 70)
-        print("\nGenerate a new agent file with database/framework integration")
+        print("\nGenerate a new Masumi agent project with full structure")
         print("\nUsage:")
         print("  masumi scaffold [OPTIONS]")
         print("\nOptions:")
-        print("  --output FILE          Output filename (default: agent.py)")
+        print("  --name NAME            Project name (default: masumi-agent)")
+        print("  --dir DIRECTORY        Output directory (default: project name)")
         print("  --database DB          Database choice (see options below)")
         print("  --framework FW         Framework choice (see options below)")
+        print("  --libs LIBS            Additional libraries, comma-separated")
+        print("                         (options: openai, anthropic, requests, pandas, numpy)")
         print("  --non-interactive      Skip interactive prompts")
         print("  --help, -h             Show this help message")
         print("\nDatabase Options:")
@@ -358,20 +361,26 @@ def scaffold_command(args):
         print("  autogen   AutoGen - conversational AI agents")
         print("\nExamples:")
         print("  masumi scaffold")
-        print("  masumi scaffold --output my_agent.py --database sqlite --framework langchain")
-        print("  masumi scaffold --database postgresql --framework crewai --non-interactive")
+        print("  masumi scaffold --name my-agent --database sqlite --framework langchain")
+        print("  masumi scaffold --name my-agent --database postgresql --framework crewai --libs openai,requests")
+        print("  masumi scaffold --dir my-project --database sqlite --non-interactive")
         sys.exit(0)
     
     # Parse arguments
-    output_file = "agent.py"
+    project_name = None
+    output_dir = None
     database = None
     framework = None
+    additional_libs = None
     interactive = True
     
     i = 0
     while i < len(args):
-        if args[i] == "--output" and i + 1 < len(args):
-            output_file = args[i + 1]
+        if args[i] in ["--name", "--project-name"] and i + 1 < len(args):
+            project_name = args[i + 1]
+            i += 2
+        elif args[i] in ["--dir", "--output-dir", "--directory"] and i + 1 < len(args):
+            output_dir = args[i + 1]
             i += 2
         elif args[i] == "--database" and i + 1 < len(args):
             database = args[i + 1]
@@ -381,13 +390,25 @@ def scaffold_command(args):
             framework = args[i + 1]
             interactive = False
             i += 2
+        elif args[i] in ["--libs", "--libraries"] and i + 1 < len(args):
+            libs_str = args[i + 1]
+            additional_libs = [lib.strip() for lib in libs_str.split(",") if lib.strip()]
+            interactive = False
+            i += 2
         elif args[i] == "--non-interactive":
             interactive = False
             i += 1
         else:
             i += 1
     
-    scaffold(output_file=output_file, database=database, framework=framework, interactive=interactive)
+    scaffold(
+        project_name=project_name,
+        output_dir=output_dir,
+        database=database,
+        framework=framework,
+        additional_libs=additional_libs,
+        interactive=interactive
+    )
 
 
 def show_help():
@@ -401,18 +422,20 @@ def show_help():
     print("-" * 70)
     
     print("\n  scaffold")
-    print("    Generate a new agent file with database/framework integration")
+    print("    Generate a new Masumi agent project with full structure")
     print("\n    Usage:")
     print("      masumi scaffold [OPTIONS]")
     print("\n    Options:")
-    print("      --output FILE          Output filename (default: agent.py)")
+    print("      --name NAME            Project name (default: masumi-agent)")
+    print("      --dir DIRECTORY        Output directory (default: project name)")
     print("      --database DB          Database choice (see options below)")
     print("      --framework FW         Framework choice (see options below)")
+    print("      --libs LIBS            Additional libraries, comma-separated")
     print("      --non-interactive      Skip interactive prompts")
     print("\n    Examples:")
     print("      masumi scaffold")
-    print("      masumi scaffold --output my_agent.py --database sqlite --framework langchain")
-    print("      masumi scaffold --database postgresql --framework crewai")
+    print("      masumi scaffold --name my-agent --database sqlite --framework langchain")
+    print("      masumi scaffold --name my-agent --libs openai,requests --database postgresql")
     
     print("\n  run")
     print("    Run an agent file (API mode by default)")
@@ -459,14 +482,19 @@ def show_help():
     print("\n" + "=" * 70)
     print("\nQUICK START")
     print("-" * 70)
-    print("\n  1. Generate a new agent:")
-    print("     masumi scaffold --output my_agent.py --database sqlite --framework langchain")
-    print("\n  2. Edit the generated file to implement your agent logic")
-    print("\n  3. Register your agent on Masumi network and set environment variables:")
+    print("\n  1. Generate a new agent project:")
+    print("     masumi scaffold --name my-agent --database sqlite --framework langchain")
+    print("\n  2. Set up the project:")
+    print("     cd my-agent")
+    print("     pip install -r requirements.txt")
+    print("     cp .env.example .env")
+    print("     # Edit .env with your values")
+    print("\n  3. Register your agent on Masumi network and update .env:")
     print("     - AGENT_IDENTIFIER (get it after registration)")
     print("     - PAYMENT_API_KEY")
+    print("     - SELLER_VKEY")
     print("\n  4. Run your agent:")
-    print("     masumi run my_agent.py")
+    print("     masumi run agent.py")
     
     print("\n" + "=" * 70)
     print()
@@ -482,10 +510,10 @@ def main():
     if len(sys.argv) < 2:
         print("Masumi Agent Builder CLI")
         print("\nUsage:")
-        print("  masumi scaffold [--output FILE] [--database DB] [--framework FW]")
+        print("  masumi scaffold [--name NAME] [--dir DIR] [--database DB] [--framework FW] [--libs LIBS]")
         print("  masumi run <file.py> [--standalone] [--input 'JSON']")
         print("\nCommands:")
-        print("  scaffold  Generate a new agent file with database/framework integration")
+        print("  scaffold  Generate a new Masumi agent project with full structure")
         print("  run       Run an agent file (API mode by default, use --standalone for direct execution)")
         print("\nUse 'masumi --help' for detailed information and all options.")
         sys.exit(1)
