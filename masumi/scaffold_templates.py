@@ -1072,7 +1072,7 @@ def scaffold(
         (project_path / ".env.example").write_text(_get_env_template(database, framework, additional_libs))
         (project_path / "README.md").write_text(_get_readme_template(project_name, database, framework, additional_libs))
         (project_path / ".gitignore").write_text(_get_gitignore_template())
-    
+
     # Show completion message
     if interactive:
         from .interactive_cli import show_completion_message
