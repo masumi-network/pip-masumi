@@ -1,0 +1,24 @@
+# Ruff configuration file
+# Run with: ruff check masumi/
+# Auto-fix with: ruff check masumi/ --fix
+
+[lint]
+# Enable common rule sets
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort (import sorting)
+    "N",   # pep8-naming
+    "UP",  # pyupgrade
+]
+
+# Ignore specific rules if needed
+ignore = [
+    "E501",  # Line too long (let formatter handle this)
+]
+
+[lint.per-file-ignores]
+# Allow longer lines in tests
+"tests/**/*.py" = ["E501"]
+

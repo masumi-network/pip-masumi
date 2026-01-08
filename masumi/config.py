@@ -1,5 +1,3 @@
-import os
-
 class Config:
     """
     Centralized configuration for the masumi_crewai package.
