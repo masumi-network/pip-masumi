@@ -384,16 +384,13 @@ def scaffold_command(args):
             i += 2
         elif args[i] == "--database" and i + 1 < len(args):
             database = args[i + 1]
-            interactive = False
             i += 2
         elif args[i] == "--framework" and i + 1 < len(args):
             framework = args[i + 1]
-            interactive = False
             i += 2
         elif args[i] in ["--libs", "--libraries"] and i + 1 < len(args):
             libs_str = args[i + 1]
             additional_libs = [lib.strip() for lib in libs_str.split(",") if lib.strip()]
-            interactive = False
             i += 2
         elif args[i] == "--non-interactive":
             interactive = False
