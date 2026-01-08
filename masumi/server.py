@@ -1,0 +1,516 @@
+"""
+FastAPI server framework for MIP-003 agent endpoints.
+"""
+
+import json
+import logging
+from typing import Optional, Callable, Dict, Any, Awaitable, Union
+from fastapi import FastAPI, HTTPException, Query
+
+from .config import Config
+from .payment import Payment
+from .models import (
+    StartJobRequest,
+    StartJobResponse,
+    StatusResponse,
+    AvailabilityResponse,
+    InputSchemaResponse,
+    ProvideInputRequest,
+    DemoResponse
+)
+from .endpoints import AgentEndpointHandler
+from .job_manager import JobManager, JobStorage, InMemoryJobStorage
+from .validation import validate_input_data, ValidationError
+
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+
+if not logger.handlers:
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(logging.INFO)
+    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    console_handler.setFormatter(formatter)
+    logger.addHandler(console_handler)
+
+
+class MasumiAgentServer:
+    """FastAPI server that handles all MIP-003 endpoints."""
+    
+    def __init__(
+        self,
+        config: Config,
+        agent_identifier: Optional[str] = None,
+        network: str = "Preprod",
+        job_storage: Optional[JobStorage] = None,
+        start_job_handler: Optional[Callable[[str, Dict[str, Any]], Awaitable[Any]]] = None,
+        input_schema_handler: Optional[Union[Dict[str, Any], Callable[[], Dict[str, Any]]]] = None,
+        status_handler: Optional[Callable[[str], Awaitable[Dict[str, Any]]]] = None,
+        availability_handler: Optional[Callable[[], Awaitable[Dict[str, Any]]]] = None,
+        provide_input_handler: Optional[Callable[[str, Dict[str, Any]], Awaitable[Any]]] = None,
+        demo_handler: Optional[Callable[[], Dict[str, Any]]] = None,
+        seller_vkey: Optional[str] = None
+    ):
+        """
+        Initialize the Masumi agent server.
+        
+        Args:
+            config: Configuration with API endpoints and keys
+            agent_identifier: Agent identifier from admin interface (REQUIRED for API mode).
+                              Can be provided directly or via AGENT_IDENTIFIER environment variable.
+                              The API server will not start without this identifier.
+            network: Network to use (Preprod or Mainnet)
+            job_storage: Optional custom job storage backend
+            start_job_handler: Handler for executing agent logic
+            input_schema_handler: Input schema dict (RECOMMENDED) or callable that returns dict (OPTIONAL).
+                                  Static schemas (dict) are the default and recommended for most agents.
+                                  Dynamic schemas (callable) are available for cases where the schema needs
+                                  to change based on context (e.g., user permissions, configuration, time).
+            status_handler: Optional custom status handler
+            availability_handler: Optional custom availability handler
+            provide_input_handler: Optional handler for provide_input endpoint
+            demo_handler: Optional handler for demo endpoint
+            seller_vkey: Optional seller wallet vkey (if not provided, will be loaded from SELLER_VKEY environment variable)
+        
+        Raises:
+            ValueError: If agent_identifier is not provided (either directly or via AGENT_IDENTIFIER env var).
+                        This prevents the API server from starting without required masumi configuration.
+                        Also raises ValueError if seller_vkey is not provided (either directly or via SELLER_VKEY env var).
+        """
+        import os
+        
+        # Validate agent_identifier is provided
+        if not agent_identifier:
+            agent_identifier = os.getenv("AGENT_IDENTIFIER")
+        
+        if not agent_identifier:
+            raise ValueError(
+                "agent_identifier is required. Provide it directly or set AGENT_IDENTIFIER environment variable. "
+                "Get your agent_identifier from the admin interface after registering your agent."
+            )
+        
+        # Load seller_vkey from environment if not provided
+        if not seller_vkey:
+            seller_vkey = os.getenv("SELLER_VKEY")
+        
+        # Validate seller_vkey is provided
+        if not seller_vkey:
+            raise ValueError(
+                "seller_vkey is required. Provide it directly or set SELLER_VKEY environment variable. "
+                "Get your seller_vkey from the admin interface after registering your agent."
+            )
+        
+        self.config = config
+        self.agent_identifier = agent_identifier
+        self.network = network
+        self.seller_vkey = seller_vkey
+        
+        # Initialize job manager with storage
+        storage = job_storage or InMemoryJobStorage()
+        self.job_manager = JobManager(storage)
+        
+        # Initialize endpoint handler
+        self.handler = AgentEndpointHandler()
+        
+        # Set handlers if provided
+        if start_job_handler:
+            self.handler.set_start_job_handler(start_job_handler)
+        if input_schema_handler:
+            self.handler.set_input_schema_handler(input_schema_handler)
+        if status_handler:
+            self.handler.set_status_handler(status_handler)
+        if availability_handler:
+            self.handler.set_availability_handler(availability_handler)
+        if provide_input_handler:
+            self.handler.set_provide_input_handler(provide_input_handler)
+        if demo_handler:
+            self.handler.set_demo_handler(demo_handler)
+        
+        # Create FastAPI app
+        self.app = FastAPI(
+            title="Masumi Agent API",
+            description="MIP-003 compliant agent API with Masumi payment integration",
+            version="1.0.0"
+        )
+        
+        # Register all endpoints
+        self._register_endpoints()
+        
+        logger.info(f"Initialized MasumiAgentServer for agent {agent_identifier} on {network} network")
+    
+    def _register_endpoints(self):
+        """Register all MIP-003 endpoints."""
+        
+        @self.app.post("/start_job", response_model=StartJobResponse)
+        async def start_job(request: StartJobRequest):  # noqa: F841
+            """MIP-003: /start_job - Initiates a job and creates a payment request"""
+            try:
+                # Validate input data if schema is provided
+                schema = self.handler.get_input_schema()
+                if schema:
+                    try:
+                        validate_input_data(request.input_data or {}, schema)
+                    except ValidationError as e:
+                        raise HTTPException(status_code=400, detail=str(e))
+                    except Exception as e:
+                        logger.warning(f"Error validating input: {e}")
+                
+                # Check that start_job_handler is set
+                start_handler = self.handler.get_start_job_handler()
+                if not start_handler:
+                    raise HTTPException(
+                        status_code=500,
+                        detail="Start job handler not configured"
+                    )
+                
+                # Create payment request
+                payment = Payment(
+                    agent_identifier=self.agent_identifier,
+                    config=self.config,
+                    identifier_from_purchaser=request.identifier_from_purchaser,
+                    input_data=request.input_data,
+                    network=self.network
+                )
+                
+                logger.info("Creating payment request...")
+                payment_request = await payment.create_payment_request()
+                blockchain_identifier = payment_request["data"]["blockchainIdentifier"]
+                payment.payment_ids.add(blockchain_identifier)
+                
+                # Get seller vkey (use provided or from env/config)
+                seller_vkey = self.seller_vkey or payment_request["data"].get("sellerVKey", "")
+                
+                # Create job in job manager
+                job_id = await self.job_manager.create_job(
+                    identifier_from_purchaser=request.identifier_from_purchaser,
+                    input_data=request.input_data or {},
+                    payment=payment,
+                    blockchain_identifier=blockchain_identifier,
+                    pay_by_time=int(payment_request["data"]["payByTime"]),
+                    submit_result_time=int(payment_request["data"]["submitResultTime"]),
+                    unlock_time=int(payment_request["data"]["unlockTime"]),
+                    external_dispute_unlock_time=int(payment_request["data"]["externalDisputeUnlockTime"]),
+                    agent_identifier=self.agent_identifier,
+                    seller_vkey=seller_vkey,
+                    input_hash=payment.input_hash
+                )
+                
+                # Set up payment callback
+                async def payment_callback(payment_id: str):
+                    await self._handle_payment_confirmed(job_id, payment_id)
+                
+                # Start monitoring payment
+                logger.info(f"Starting payment monitoring for job {job_id}")
+                await payment.start_status_monitoring(callback=payment_callback)
+                
+                # Return response
+                return StartJobResponse(
+                    id=job_id,
+                    blockchainIdentifier=blockchain_identifier,
+                    payByTime=int(payment_request["data"]["payByTime"]),
+                    submitResultTime=int(payment_request["data"]["submitResultTime"]),
+                    unlockTime=int(payment_request["data"]["unlockTime"]),
+                    externalDisputeUnlockTime=int(payment_request["data"]["externalDisputeUnlockTime"]),
+                    agentIdentifier=self.agent_identifier,
+                    sellerVKey=seller_vkey,
+                    identifierFromPurchaser=request.identifier_from_purchaser,
+                    input_hash=payment.input_hash or ""
+                )
+                
+            except HTTPException:
+                raise
+            except KeyError as e:
+                logger.error(f"Missing required field: {e}", exc_info=True)
+                raise HTTPException(
+                    status_code=400,
+                    detail="Bad Request: If input_data or identifier_from_purchaser is missing, invalid, or does not adhere to the schema."
+                )
+            except Exception as e:
+                logger.error(f"Error in start_job: {e}", exc_info=True)
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Internal server error: {str(e)}"
+                )
+        
+        @self.app.get("/status", response_model=StatusResponse)
+        async def get_status(job_id: str = Query(..., description="The ID of the job to check")):
+            """MIP-003: /status - Retrieves the current status of a specific job"""
+            # Use custom handler if provided
+            custom_handler = self.handler.get_status_handler()
+            if custom_handler:
+                try:
+                    return await custom_handler(job_id)
+                except Exception as e:
+                    logger.error(f"Error in custom status handler: {e}", exc_info=True)
+                    raise HTTPException(status_code=500, detail=str(e))
+            
+            # Default implementation
+            job = await self.job_manager.get_job(job_id)
+            if not job:
+                raise HTTPException(status_code=404, detail="Job not found")
+            
+            # Check payment status if payment instance exists
+            payment = self.job_manager.get_payment_instance(job_id)
+            if payment:
+                try:
+                    status_result = await payment.check_payment_status()
+                    payments = status_result.get("data", {}).get("Payments", [])
+                    for p in payments:
+                        if p.get("blockchainIdentifier") == job.get("payment_id"):
+                            job["payment_status"] = p.get("onChainState", "unknown")
+                            break
+                except Exception as e:
+                    logger.warning(f"Error checking payment status: {e}")
+            
+            result = job.get("result")
+            # Result should already be a string (agents return strings)
+            # Return None if result is not set yet
+            result_string = result if isinstance(result, str) else None
+            
+            return StatusResponse(
+                id=job_id,
+                job_id=job_id,
+                status=job.get("status", "unknown"),
+                payment_status=job.get("payment_status"),
+                result=result_string
+            )
+        
+        @self.app.get("/availability", response_model=AvailabilityResponse)
+        async def check_availability():
+            """MIP-003: /availability - Checks if the server is operational"""
+            custom_handler = self.handler.get_availability_handler()
+            if custom_handler:
+                try:
+                    result = await custom_handler()
+                    return AvailabilityResponse(**result)
+                except Exception as e:
+                    logger.error(f"Error in custom availability handler: {e}", exc_info=True)
+            
+            # Default implementation
+            return AvailabilityResponse(
+                status="available",
+                type="masumi-agent",
+                message="Server operational"
+            )
+        
+        @self.app.get("/input_schema", response_model=InputSchemaResponse)
+        async def input_schema():
+            """MIP-003: /input_schema - Returns the expected input format for jobs"""
+            schema = self.handler.get_input_schema()
+            if not schema:
+                raise HTTPException(
+                    status_code=500,
+                    detail="Input schema not configured"
+                )
+            
+            try:
+                return InputSchemaResponse(**schema)
+            except Exception as e:
+                logger.error(f"Error returning input_schema: {e}", exc_info=True)
+                raise HTTPException(status_code=500, detail=str(e))
+        
+        @self.app.post("/provide_input")
+        async def provide_input(request: ProvideInputRequest):
+            """MIP-003: /provide_input - Provides additional input for a job awaiting input"""
+            handler = self.handler.get_provide_input_handler()
+            if not handler:
+                raise HTTPException(
+                    status_code=501,
+                    detail="Provide input endpoint not implemented"
+                )
+            
+            try:
+                await handler(request.job_id, request.input_data)
+                return {"status": "success", "message": "Input provided successfully"}
+            except Exception as e:
+                logger.error(f"Error in provide_input handler: {e}", exc_info=True)
+                raise HTTPException(status_code=500, detail=str(e))
+        
+        @self.app.get("/demo", response_model=DemoResponse)
+        async def demo():
+            """MIP-003: /demo - Returns demo data for marketing purposes"""
+            handler = self.handler.get_demo_handler()
+            if not handler:
+                raise HTTPException(
+                    status_code=501,
+                    detail="Demo endpoint not implemented"
+                )
+            
+            try:
+                demo_data = handler()
+                return DemoResponse(**demo_data)
+            except Exception as e:
+                logger.error(f"Error in demo handler: {e}", exc_info=True)
+                raise HTTPException(status_code=500, detail=str(e))
+    
+    async def _handle_payment_confirmed(self, job_id: str, payment_id: str):
+        """Handle payment confirmation - execute agent logic and complete payment."""
+        try:
+            logger.info(f"Payment {payment_id} confirmed for job {job_id}, executing task...")
+            
+            # Update job status to running
+            await self.job_manager.set_job_running(job_id)
+            
+            # Get job data
+            job = await self.job_manager.get_job(job_id)
+            if not job:
+                logger.error(f"Job {job_id} not found")
+                return
+            
+            # Get handler
+            start_handler = self.handler.get_start_job_handler()
+            if not start_handler:
+                logger.error(f"Start job handler not configured for job {job_id}")
+                await self.job_manager.set_job_failed(job_id, "Start job handler not configured")
+                return
+            
+            # Execute agent logic
+            input_data = job.get("input_data", {})
+            identifier_from_purchaser = job.get("identifier_from_purchaser", "")
+            
+            try:
+                result = await start_handler(identifier_from_purchaser, input_data)
+                logger.info(f"Agent logic completed for job {job_id}")
+            except Exception as e:
+                logger.error(f"Error executing agent logic for job {job_id}: {e}", exc_info=True)
+                await self.job_manager.set_job_failed(job_id, str(e))
+                await self.job_manager.cleanup_payment_instance(job_id)
+                return
+            
+            # Validate that result is a string (agent handlers must return strings)
+            if not isinstance(result, str):
+                error_msg = f"Agent handler must return a string, got {type(result).__name__}"
+                logger.error(f"Invalid result type for job {job_id}: {error_msg}")
+                await self.job_manager.set_job_failed(job_id, error_msg)
+                await self.job_manager.cleanup_payment_instance(job_id)
+                return
+            
+            # Get payment instance - required for on-chain submission
+            payment = self.job_manager.get_payment_instance(job_id)
+            if not payment:
+                error_msg = f"Payment instance not found for job {job_id}"
+                logger.error(error_msg)
+                await self.job_manager.set_job_failed(job_id, error_msg)
+                return
+            
+            # Complete payment on-chain (required - job fails if this fails)
+            try:
+                await payment.complete_payment(payment_id, result)
+                logger.info(f"Payment completed on-chain for job {job_id}")
+            except Exception as e:
+                logger.error(f"Error completing payment on-chain for job {job_id}: {e}", exc_info=True)
+                await self.job_manager.set_job_failed(job_id, f"Payment completion failed: {str(e)}")
+                await self.job_manager.cleanup_payment_instance(job_id)
+                return
+            
+            # Update job status to completed (only after successful on-chain submission)
+            await self.job_manager.set_job_completed(job_id, result)
+            
+            # Cleanup payment instance
+            await self.job_manager.cleanup_payment_instance(job_id)
+            
+        except Exception as e:
+            logger.error(f"Error handling payment confirmation for job {job_id}: {e}", exc_info=True)
+            try:
+                await self.job_manager.set_job_failed(job_id, str(e))
+                await self.job_manager.cleanup_payment_instance(job_id)
+            except Exception as cleanup_error:
+                logger.error(f"Error during cleanup: {cleanup_error}", exc_info=True)
+    
+    def get_app(self) -> FastAPI:
+        """Get the FastAPI application instance."""
+        return self.app
+    
+    # Decorator methods for easy handler registration
+    def start_job(self, func: Callable[[str, Dict[str, Any]], Awaitable[Any]]):
+        """Decorator for start_job handler."""
+        self.handler.start_job(func)
+        return func
+    
+    def status(self, func: Callable[[str], Awaitable[Dict[str, Any]]]):
+        """Decorator for status handler."""
+        self.handler.status(func)
+        return func
+    
+    def availability(self, func: Callable[[], Awaitable[Dict[str, Any]]]):
+        """Decorator for availability handler."""
+        self.handler.availability(func)
+        return func
+    
+    def input_schema(self, schema: Union[Dict[str, Any], Callable[[], Dict[str, Any]]]):
+        """
+        Decorator for input_schema.
+        
+        Accepts either:
+        - A dict (static schema) - RECOMMENDED: Most agents use static schemas
+        - A callable that returns a dict (dynamic schema) - OPTIONAL: For cases where schema
+          needs to change based on context (e.g., user permissions, configuration, time)
+        """
+        self.handler.input_schema(schema)
+        return schema
+    
+    def provide_input(self, func: Callable[[str, Dict[str, Any]], Awaitable[Any]]):
+        """Decorator for provide_input handler."""
+        self.handler.provide_input(func)
+        return func
+    
+    def demo(self, func: Callable[[], Dict[str, Any]]):
+        """Decorator for demo handler."""
+        self.handler.demo(func)
+        return func
+
+
+def create_masumi_app(
+    config: Config,
+    agent_identifier: Optional[str] = None,
+    network: str = "Preprod",
+    job_storage: Optional[JobStorage] = None,
+    start_job_handler: Optional[Callable[[str, Dict[str, Any]], Awaitable[Any]]] = None,
+    input_schema_handler: Optional[Union[Dict[str, Any], Callable[[], Dict[str, Any]]]] = None,
+    status_handler: Optional[Callable[[str], Awaitable[Dict[str, Any]]]] = None,
+    availability_handler: Optional[Callable[[], Awaitable[Dict[str, Any]]]] = None,
+    provide_input_handler: Optional[Callable[[str, Dict[str, Any]], Awaitable[Any]]] = None,
+    demo_handler: Optional[Callable[[], Dict[str, Any]]] = None,
+    seller_vkey: Optional[str] = None
+) -> FastAPI:
+    """
+    Helper function to create a FastAPI app with all MIP-003 endpoints.
+    
+    Args:
+        config: Configuration with API endpoints and keys
+        agent_identifier: Agent identifier from admin interface (REQUIRED for API mode).
+                          Can be provided directly or via AGENT_IDENTIFIER environment variable.
+                          The API server will not start without this identifier.
+        network: Network to use (Preprod or Mainnet)
+        job_storage: Optional custom job storage backend
+        start_job_handler: Handler for executing agent logic (required)
+        input_schema_handler: Input schema dict (RECOMMENDED) or callable that returns dict (OPTIONAL).
+                              Static schemas (dict) are the default and recommended for most agents.
+                              Dynamic schemas (callable) are available for cases where the schema needs
+                              to change based on context (e.g., user permissions, configuration, time).
+        status_handler: Optional custom status handler
+        availability_handler: Optional custom availability handler
+        provide_input_handler: Optional handler for provide_input endpoint
+        demo_handler: Optional handler for demo endpoint
+        seller_vkey: Optional seller wallet vkey
+    
+    Returns:
+        FastAPI: Configured FastAPI application
+    
+    Raises:
+        ValueError: If agent_identifier is not provided (either directly or via AGENT_IDENTIFIER env var).
+                    This prevents the API server from starting without required masumi configuration.
+    """
+    server = MasumiAgentServer(
+        config=config,
+        agent_identifier=agent_identifier,
+        network=network,
+        job_storage=job_storage,
+        start_job_handler=start_job_handler,
+        input_schema_handler=input_schema_handler,
+        status_handler=status_handler,
+        availability_handler=availability_handler,
+        provide_input_handler=provide_input_handler,
+        demo_handler=demo_handler,
+        seller_vkey=seller_vkey
+    )
+    return server.get_app()

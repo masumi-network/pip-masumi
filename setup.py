@@ -17,6 +17,10 @@ setup(
         "pytest>=7.0.0",
         "pytest-asyncio>=0.18.0",
         "canonicaljson>=1.6.3",
+        "fastapi>=0.100.0",
+        "uvicorn[standard]>=0.23.0",
+        "pydantic>=2.0.0",
+        "python-dotenv>=0.19.0",
     ],
     author="Patrick Tobler",
     author_email="patrick@nmkr.io",
@@ -30,4 +34,9 @@ setup(
         "Operating System :: OS Independent",
     ],
     python_requires=">=3.8",
+    entry_points={
+        "console_scripts": [
+            "masumi=masumi.cli:main",
+        ],
+    },
 ) 

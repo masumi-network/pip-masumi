@@ -2,10 +2,9 @@ from dataclasses import dataclass
 from datetime import datetime, timezone, timedelta
 import asyncio
 import logging
-from typing import List, Optional, Dict, Any, Set, Callable
+from typing import List, Optional, Dict, Any, Set
 import aiohttp
 from .config import Config
-import json
 from .helper_functions import create_masumi_input_hash, create_masumi_output_hash
 
 # Configure logging
@@ -341,8 +340,10 @@ class Payment:
         Start monitoring payment status at regular intervals.
         
         Args:
-            callback (Callable[[str], None], optional): Function to call when a payment is completed.
+            callback (Callable[[str], None], optional): Function to call when a payment is ready to process.
+                The callback is triggered when payment reaches "FundsLocked" state (payment confirmed).
                 The function will receive the payment_id as its parameter.
+                If the callback fails, the payment will remain in tracking for retry on the next interval.
             interval_seconds (int, optional): Interval between status checks in seconds. 
                                              Defaults to 60.
         """
@@ -372,14 +373,10 @@ class Payment:
                                 next_action = payment.get("NextAction", {}).get("requestedAction")
                                 logger.info(f"Payment {payment_id}: onChainState={on_chain_state}, NextAction={next_action}")
                                 
-                                # Check if payment is completed - either by onChainState or NextAction
-                                if (on_chain_state == "FundsLocked" or 
-                                    on_chain_state == "Complete" or
-                                    next_action == "PaymentComplete" or 
-                                    next_action == "None"):
-                                    
-                                    logger.info(f"Payment {payment_id} completed, removing from tracking")
-                                    self.payment_ids.remove(payment_id)
+                                # Trigger callback ONLY when payment is ready to process (FundsLocked)
+                                # This is when the payment has been made and we should start processing
+                                if on_chain_state == "FundsLocked":
+                                    logger.info(f"Payment {payment_id} is ready (FundsLocked), triggering callback")
                                     
                                     # Call the callback function if provided
                                     if callback:
@@ -389,8 +386,23 @@ class Payment:
                                                 await callback(payment_id)
                                             else:
                                                 callback(payment_id)
+                                            
+                                            # Only remove payment_id after successful callback completion
+                                            # This ensures we can retry if callback fails
+                                            logger.info(f"Callback completed successfully for payment {payment_id}, removing from tracking")
+                                            self.payment_ids.remove(payment_id)
                                         except Exception as e:
-                                            logger.error(f"Error in callback function: {str(e)}")
+                                            logger.error(f"Error in callback function for payment {payment_id}: {str(e)}", exc_info=True)
+                                            # Keep payment_id in tracking so monitoring can retry on next interval
+                                            logger.info(f"Keeping payment {payment_id} in tracking for retry")
+                                
+                                # Remove payment from tracking if it's already complete (final states)
+                                # This handles cases where payment was completed outside this monitoring loop
+                                elif (on_chain_state == "Complete" or 
+                                      next_action == "PaymentComplete" or 
+                                      next_action == "None"):
+                                    logger.info(f"Payment {payment_id} is already complete, removing from tracking")
+                                    self.payment_ids.remove(payment_id)
                 
                     # If no more payments to monitor, exit the loop
                     if not self.payment_ids:
