@@ -186,6 +186,11 @@ def _run_standalone(
 
 def _load_module_from_file(file_path: str):
     """Load a Python module from a file path."""
+    # Add the directory containing the file to sys.path so imports work
+    file_dir = os.path.dirname(os.path.abspath(file_path))
+    if file_dir not in sys.path:
+        sys.path.insert(0, file_dir)
+    
     module_name = os.path.splitext(os.path.basename(file_path))[0]
     spec = importlib.util.spec_from_file_location(module_name, file_path)
     if spec is None or spec.loader is None:
