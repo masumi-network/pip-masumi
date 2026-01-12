@@ -75,6 +75,7 @@ class Payment:
         self.network = network
         self.payment_type = "Web3CardanoV1"
         self.payment_ids: Set[str] = set()
+        self._callback_triggered_ids: Set[str] = set()
         self.identifier_from_purchaser = identifier_from_purchaser
         self._status_check_task: Optional[asyncio.Task] = None
         self.config = config
@@ -170,8 +171,8 @@ class Payment:
                     result = await response.json()
                     new_payment_id = result["data"]["blockchainIdentifier"]
                     self.payment_ids.add(new_payment_id)
-                    
-                    # Extract time values from the response
+                    logger.info(f"Payment request created successfully. ID: {new_payment_id}")
+                    logger.info(f"Payment Details: {json.dumps(result['data'], indent=2)}")
                     time_values = {
                         "payByTime": result["data"]["payByTime"],
                         "submitResultTime": result["data"]["submitResultTime"],
@@ -325,7 +326,9 @@ class Payment:
                     if response.status != 200:
                         error_text = await response.text()
                         logger.error(f"Payment completion failed with status {response.status}: {error_text}")
-                        raise Exception(f"Payment completion failed: {error_text}")
+                        # Log the payload that failed
+                        logger.error(f"Failed payload: {payload}")
+                        raise Exception(f"Payment completion failed (status {response.status}): {error_text}")
                     
                     result = await response.json()
                     logger.info(f"Payment completion request successful for {blockchain_identifier}")
@@ -374,8 +377,8 @@ class Payment:
                                 logger.info(f"Payment {payment_id}: onChainState={on_chain_state}, NextAction={next_action}")
                                 
                                 # Trigger callback ONLY when payment is ready to process (FundsLocked)
-                                # This is when the payment has been made and we should start processing
-                                if on_chain_state == "FundsLocked":
+                                # and we haven't triggered it yet
+                                if on_chain_state == "FundsLocked" and payment_id not in self._callback_triggered_ids:
                                     logger.info(f"Payment {payment_id} is ready (FundsLocked), triggering callback")
                                     
                                     # Call the callback function if provided
@@ -387,10 +390,10 @@ class Payment:
                                             else:
                                                 callback(payment_id)
                                             
-                                            # Only remove payment_id after successful callback completion
-                                            # This ensures we can retry if callback fails
-                                            logger.info(f"Callback completed successfully for payment {payment_id}, removing from tracking")
-                                            self.payment_ids.remove(payment_id)
+                                            # Mark as triggered instead of removing immediately
+                                            # This allows us to continue monitoring until on-chain completion
+                                            logger.info(f"Callback completed successfully for payment {payment_id}")
+                                            self._callback_triggered_ids.add(payment_id)
                                         except Exception as e:
                                             logger.error(f"Error in callback function for payment {payment_id}: {str(e)}", exc_info=True)
                                             # Keep payment_id in tracking so monitoring can retry on next interval
@@ -401,8 +404,10 @@ class Payment:
                                 elif (on_chain_state == "Complete" or 
                                       next_action == "PaymentComplete" or 
                                       next_action == "None"):
-                                    logger.info(f"Payment {payment_id} is already complete, removing from tracking")
+                                    logger.info(f"Payment {payment_id} reached final state '{on_chain_state}', removing from tracking")
                                     self.payment_ids.remove(payment_id)
+                                    if payment_id in self._callback_triggered_ids:
+                                        self._callback_triggered_ids.remove(payment_id)
                 
                     # If no more payments to monitor, exit the loop
                     if not self.payment_ids:

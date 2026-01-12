@@ -187,9 +187,20 @@ class JobManager:
         if payment and job and job.get("payment_id"):
             payment_id = job.get("payment_id")
             logger.info(f"Submitting result on-chain for job {job_id} (payment ID: {payment_id})")
-            # This will raise if submission fails, which is intended
-            await payment.complete_payment(payment_id, result)
-            logger.info(f"Result submitted on-chain for job {job_id}")
+            logger.info(f"Result length: {len(result)} characters")
+            try:
+                # This will raise if submission fails, which is intended
+                await payment.complete_payment(payment_id, result)
+                logger.info(f"Result submitted on-chain successfully for job {job_id}")
+            except Exception as e:
+                logger.error(f"On-chain result submission FAILED for job {job_id}: {str(e)}")
+                raise
+        else:
+            reason = []
+            if not payment: reason.append("payment instance missing")
+            if not job: reason.append("job data missing")
+            if job and not job.get("payment_id"): reason.append("payment_id missing in job data")
+            logger.error(f"SKIPPING on-chain submission for job {job_id}. Reasons: {', '.join(reason)}")
 
         await self.update_job_status(
             job_id,
