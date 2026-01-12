@@ -392,25 +392,34 @@ class MasumiAgentServer:
                 await self.job_manager.cleanup_payment_instance(job_id)
                 return
             
-            # Validate that result is a string (agent handlers must return strings)
+            # Ensure result is a string for on-chain hashing
             if not isinstance(result, str):
-                error_msg = f"Agent handler must return a string, got {type(result).__name__}"
-                logger.error(f"Invalid result type for job {job_id}: {error_msg}")
-                await self.job_manager.set_job_failed(job_id, error_msg)
-                await self.job_manager.cleanup_payment_instance(job_id)
-                return
+                try:
+                    logger.info(f"Converting {type(result).__name__} result to JSON string")
+                    result = json.dumps(result, ensure_ascii=False)
+                except Exception as e:
+                    error_msg = f"Failed to serialize agent result: {str(e)}"
+                    logger.error(f"Invalid result for job {job_id}: {error_msg}")
+                    await self.job_manager.set_job_failed(job_id, error_msg)
+                    await self.job_manager.cleanup_payment_instance(job_id)
+                    return
             
             # Update job status to completed (now also handles on-chain submission)
             try:
                 await self.job_manager.set_job_completed(job_id, result)
+                logger.info(f"Job {job_id} successfully completed and result submitted.")
             except Exception as e:
                 logger.error(f"Error completing job {job_id}: {e}", exc_info=True)
                 await self.job_manager.set_job_failed(job_id, f"Job completion failed: {str(e)}")
+                # We cleanup on failure because we won't be reaching a 'Complete' state normally
                 await self.job_manager.cleanup_payment_instance(job_id)
                 return
             
-            # Cleanup payment instance
-            await self.job_manager.cleanup_payment_instance(job_id)
+            # Note: We do NOT call cleanup_payment_instance(job_id) here anymore.
+            # Instead, we let the background monitoring task continue until it 
+            # sees the 'Complete' state on-chain, at which point it will 
+            # naturally stop monitoring that payment ID.
+            logger.info(f"Job {job_id} logic finished. Monitoring will continue until on-chain confirmation.")
             
         except Exception as e:
             logger.error(f"Fatal error in _execute_agent_job for job {job_id}: {e}", exc_info=True)
