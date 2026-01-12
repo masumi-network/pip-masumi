@@ -2,6 +2,7 @@
 FastAPI server framework for MIP-003 agent endpoints.
 """
 
+import asyncio
 import json
 import logging
 from typing import Optional, Callable, Dict, Any, Awaitable, Union
@@ -248,29 +249,21 @@ class MasumiAgentServer:
             if not job:
                 raise HTTPException(status_code=404, detail="Job not found")
             
-            # Check payment status if payment instance exists
-            payment = self.job_manager.get_payment_instance(job_id)
-            if payment:
-                try:
-                    status_result = await payment.check_payment_status()
-                    payments = status_result.get("data", {}).get("Payments", [])
-                    for p in payments:
-                        if p.get("blockchainIdentifier") == job.get("payment_id"):
-                            job["payment_status"] = p.get("onChainState", "unknown")
-                            break
-                except Exception as e:
-                    logger.warning(f"Error checking payment status: {e}")
-            
+            status = job.get("status", "unknown")
             result = job.get("result")
             # Result should already be a string (agents return strings)
             # Return None if result is not set yet
             result_string = result if isinstance(result, str) else None
             
+            # Include input schema if awaiting input
+            input_schema = None
+            if status == "awaiting_input":
+                input_schema = self.handler.get_input_schema()
+            
             return StatusResponse(
                 id=job_id,
-                job_id=job_id,
-                status=job.get("status", "unknown"),
-                payment_status=job.get("payment_status"),
+                status=status,
+                input_schema=input_schema,
                 result=result_string
             )
         
@@ -343,24 +336,45 @@ class MasumiAgentServer:
                 raise HTTPException(status_code=500, detail=str(e))
     
     async def _handle_payment_confirmed(self, job_id: str, payment_id: str):
-        """Handle payment confirmation - execute agent logic and complete payment."""
+        """Handle payment confirmation - start background task for agent logic."""
         try:
-            logger.info(f"Payment {payment_id} confirmed for job {job_id}, executing task...")
+            logger.info(f"Payment {payment_id} confirmed for job {job_id}, starting agent logic...")
             
             # Update job status to running
             await self.job_manager.set_job_running(job_id)
             
+            # Start actual job execution in a background task
+            # This ensures that the payment monitoring loop is not blocked
+            # and the server remains responsive to status requests
+            asyncio.create_task(self._execute_agent_job(job_id))
+            
+            logger.info(f"Agent logic task spawned for job {job_id}")
+            
+        except Exception as e:
+            logger.error(f"Error starting agent logic for job {job_id}: {e}", exc_info=True)
+            try:
+                await self.job_manager.set_job_failed(job_id, str(e))
+                await self.job_manager.cleanup_payment_instance(job_id)
+            except Exception as cleanup_error:
+                logger.error(f"Error during cleanup: {cleanup_error}", exc_info=True)
+
+    async def _execute_agent_job(self, job_id: str):
+        """Internal method to execute agent logic and handle results."""
+        try:
             # Get job data
             job = await self.job_manager.get_job(job_id)
             if not job:
-                logger.error(f"Job {job_id} not found")
+                logger.error(f"Job {job_id} not found during execution")
                 return
+            
+            logger.info(f"Input data for job {job_id}: {job.get('input_data')}")
             
             # Get handler
             start_handler = self.handler.get_start_job_handler()
             if not start_handler:
                 logger.error(f"Start job handler not configured for job {job_id}")
                 await self.job_manager.set_job_failed(job_id, "Start job handler not configured")
+                await self.job_manager.cleanup_payment_instance(job_id)
                 return
             
             # Execute agent logic
@@ -368,6 +382,8 @@ class MasumiAgentServer:
             identifier_from_purchaser = job.get("identifier_from_purchaser", "")
             
             try:
+                # We await the handler. If it's a long-running but properly async function,
+                # the event loop will remain responsive to other requests.
                 result = await start_handler(identifier_from_purchaser, input_data)
                 logger.info(f"Agent logic completed for job {job_id}")
             except Exception as e:
@@ -384,37 +400,25 @@ class MasumiAgentServer:
                 await self.job_manager.cleanup_payment_instance(job_id)
                 return
             
-            # Get payment instance - required for on-chain submission
-            payment = self.job_manager.get_payment_instance(job_id)
-            if not payment:
-                error_msg = f"Payment instance not found for job {job_id}"
-                logger.error(error_msg)
-                await self.job_manager.set_job_failed(job_id, error_msg)
-                return
-            
-            # Complete payment on-chain (required - job fails if this fails)
+            # Update job status to completed (now also handles on-chain submission)
             try:
-                await payment.complete_payment(payment_id, result)
-                logger.info(f"Payment completed on-chain for job {job_id}")
+                await self.job_manager.set_job_completed(job_id, result)
             except Exception as e:
-                logger.error(f"Error completing payment on-chain for job {job_id}: {e}", exc_info=True)
-                await self.job_manager.set_job_failed(job_id, f"Payment completion failed: {str(e)}")
+                logger.error(f"Error completing job {job_id}: {e}", exc_info=True)
+                await self.job_manager.set_job_failed(job_id, f"Job completion failed: {str(e)}")
                 await self.job_manager.cleanup_payment_instance(job_id)
                 return
-            
-            # Update job status to completed (only after successful on-chain submission)
-            await self.job_manager.set_job_completed(job_id, result)
             
             # Cleanup payment instance
             await self.job_manager.cleanup_payment_instance(job_id)
             
         except Exception as e:
-            logger.error(f"Error handling payment confirmation for job {job_id}: {e}", exc_info=True)
+            logger.error(f"Fatal error in _execute_agent_job for job {job_id}: {e}", exc_info=True)
             try:
                 await self.job_manager.set_job_failed(job_id, str(e))
                 await self.job_manager.cleanup_payment_instance(job_id)
             except Exception as cleanup_error:
-                logger.error(f"Error during cleanup: {cleanup_error}", exc_info=True)
+                logger.error(f"Error during final cleanup: {cleanup_error}", exc_info=True)
     
     def get_app(self) -> FastAPI:
         """Get the FastAPI application instance."""
