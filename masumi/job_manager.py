@@ -75,7 +75,8 @@ class InMemoryJobStorage(JobStorage):
             self._jobs[job_id].update(updates)
             logger.debug(f"Updated job {job_id} in memory storage")
         else:
-            logger.warning(f"Attempted to update non-existent job {job_id}")
+            logger.error(f"Attempted to update non-existent job {job_id}")
+            raise ValueError(f"Job {job_id} not found in storage")
     
     async def delete_job(self, job_id: str) -> None:
         """Delete a job entry."""
@@ -133,7 +134,6 @@ class JobManager:
         job_data = {
             "job_id": job_id,
             "status": "awaiting_payment",
-            "payment_status": "pending",
             "payment_id": blockchain_identifier,
             "identifier_from_purchaser": identifier_from_purchaser,
             "input_data": input_data,
@@ -166,22 +166,35 @@ class JobManager:
         logger.info(f"Updated job {job_id} status to '{status}'")
     
     async def set_job_running(self, job_id: str) -> None:
-        """Mark a job as running."""
-        await self.update_job_status(job_id, "running")
+        """Mark a job as running and confirm payment."""
+        await self.update_job_status(
+            job_id, 
+            "running"
+        )
     
     async def set_job_completed(self, job_id: str, result: str) -> None:
         """
-        Mark a job as completed with a result.
+        Mark a job as completed with a result and submit it on-chain if applicable.
         
         Args:
             job_id: The job ID
             result: The result string (agent handlers must return strings)
         """
+        # Get payment instance and ID for on-chain submission
+        payment = self.get_payment_instance(job_id)
+        job = await self.get_job(job_id)
+        
+        if payment and job and job.get("payment_id"):
+            payment_id = job.get("payment_id")
+            logger.info(f"Submitting result on-chain for job {job_id} (payment ID: {payment_id})")
+            # This will raise if submission fails, which is intended
+            await payment.complete_payment(payment_id, result)
+            logger.info(f"Result submitted on-chain for job {job_id}")
+
         await self.update_job_status(
             job_id,
             "completed",
-            result=result,
-            payment_status="completed"
+            result=result
         )
         logger.info(f"Job {job_id} marked as completed")
     
@@ -190,8 +203,7 @@ class JobManager:
         await self.update_job_status(
             job_id,
             "failed",
-            error=error,
-            payment_status="error"
+            error=error
         )
         logger.error(f"Job {job_id} marked as failed: {error}")
     

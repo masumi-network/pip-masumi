@@ -180,12 +180,12 @@ async def test_check_existing_payment_status(payment):
     
     # Find our payment in the list
     payment_found = False
-    for payment_status in status_result["data"]["Payments"]:
-        if payment_status["blockchainIdentifier"] == payment_id:
+    for p_info in status_result["data"]["Payments"]:
+        if p_info["blockchainIdentifier"] == payment_id:
             payment_found = True
-            logger.info(f"Found payment status: {payment_status['NextAction']['requestedAction']}")
+            logger.info(f"Found payment status: {p_info['NextAction']['requestedAction']}")
             # Verify it has the expected fields
-            assert "requestedAction" in payment_status["NextAction"]
+            assert "requestedAction" in p_info["NextAction"]
             break
     
     assert payment_found, f"Payment with ID {payment_id} not found in status response"
@@ -342,12 +342,12 @@ async def test_check_purchase_status(test_agent, payment):
             
             # Look for our payment in the list by blockchain ID
             payment_found = False
-            for payment_status in result["data"]["Payments"]:
-                if payment_status["blockchainIdentifier"] == blockchain_id:
+            for p_info in result["data"]["Payments"]:
+                if p_info["blockchainIdentifier"] == blockchain_id:
                     payment_found = True
                     
                     # Get the onChainState
-                    on_chain_state = payment_status.get("onChainState")
+                    on_chain_state = p_info.get("onChainState")
                     logger.info(f"Payment onChainState: {on_chain_state}")
                     
                     # Check specifically for FundsLocked state
@@ -429,17 +429,17 @@ async def test_complete_payment(test_agent, payment):
         final_status = await payment.check_payment_status()
         
         # Look for our payment in the list
-        for payment_status in final_status["data"]["Payments"]:
-            if payment_status["blockchainIdentifier"] == blockchain_id:
+        for p_info in final_status["data"]["Payments"]:
+            if p_info["blockchainIdentifier"] == blockchain_id:
                 # Check the final status
-                if "onChainState" in payment_status:
-                    logger.info(f"Final onChainState: {payment_status['onChainState']}")
+                if "onChainState" in p_info:
+                    logger.info(f"Final onChainState: {p_info['onChainState']}")
                 
-                final_action = payment_status.get("NextAction", {}).get("requestedAction", "Unknown")
+                final_action = p_info.get("NextAction", {}).get("requestedAction", "Unknown")
                 logger.info(f"Final payment status: {final_action}")
                 
                 # The payment should be in a completed state
-                if final_action in ["PaymentComplete", "None"] or payment_status.get("onChainState") == "Complete":
+                if final_action in ["PaymentComplete", "None"] or p_info.get("onChainState") == "Complete":
                     logger.info("Payment has been successfully completed")
                 else:
                     logger.warning(f"Payment completion may still be processing. Current status: {final_action}")
@@ -504,13 +504,13 @@ async def test_monitor_payment_status(test_agent, payment):
                 
                 # Look for our payment in the list
                 payment_found = False
-                for payment_status in payments:
-                    if payment_status["blockchainIdentifier"] == blockchain_id:
+                for p_info in payments:
+                    if p_info["blockchainIdentifier"] == blockchain_id:
                         payment_found = True
                         
                         # Check the current status
-                        on_chain_state = payment_status.get("onChainState")
-                        current_status = payment_status.get("NextAction", {}).get("requestedAction", "Unknown")
+                        on_chain_state = p_info.get("onChainState")
+                        current_status = p_info.get("NextAction", {}).get("requestedAction", "Unknown")
                         
                         logger.info(f"Payment onChainState: {on_chain_state}")
                         logger.info(f"Current payment status: {current_status}")
@@ -648,9 +648,9 @@ async def test_refund_flow(payment, test_agent):
         status_result = await payment.check_payment_status()
         payments = status_result.get("data", {}).get("Payments", [])
         
-        for payment_status in payments:
-            if payment_status["blockchainIdentifier"] == blockchain_id:
-                on_chain_state = payment_status.get("onChainState")
+        for p_info in payments:
+            if p_info["blockchainIdentifier"] == blockchain_id:
+                on_chain_state = p_info.get("onChainState")
                 logger.info(f"Payment onChainState: {on_chain_state}")
                 
                 if on_chain_state == "FundsLocked":
@@ -696,15 +696,15 @@ async def test_refund_flow(payment, test_agent):
     
     status_after_refund = await payment.check_payment_status()
     payment_found = False
-    for payment_status in status_after_refund.get("data", {}).get("Payments", []):
-        if payment_status["blockchainIdentifier"] == blockchain_id:
+    for p_info in status_after_refund.get("data", {}).get("Payments", []):
+        if p_info["blockchainIdentifier"] == blockchain_id:
             payment_found = True
             logger.info(f"Payment found in status check")
-            logger.info(f"OnChainState: {payment_status.get('onChainState')}")
-            logger.info(f"NextAction: {payment_status.get('NextAction', {}).get('requestedAction')}")
+            logger.info(f"OnChainState: {p_info.get('onChainState')}")
+            logger.info(f"NextAction: {p_info.get('NextAction', {}).get('requestedAction')}")
             
             # Check if refund is already in a specific state
-            if payment_status.get('NextAction', {}).get('requestedAction') == 'RefundRequested':
+            if p_info.get('NextAction', {}).get('requestedAction') == 'RefundRequested':
                 logger.info("Payment is in RefundRequested state")
             break
     
