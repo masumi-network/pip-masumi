@@ -56,19 +56,16 @@ class StartJobResponse(BaseModel):
 class StatusResponse(BaseModel):
     """Response model for /status endpoint"""
     id: str = Field(..., description="Unique identifier of the status")
-    job_id: Optional[str] = Field(None, description="Job ID if available")
     status: str = Field(..., description="Current status of the job")
-    payment_status: Optional[str] = Field(None, description="Payment status if available")
+    input_schema: Optional[Dict[str, Any]] = Field(None, description="Only required when status is 'awaiting_input'")
     result: Optional[str] = Field(None, description="Job result or pre-result, if available")
     
     class Config:
         json_schema_extra = {
             "example": {
-                "id": "status-123",
-                "job_id": "18d66eed-6af5-4589-b53a-d2e78af657b6",
+                "id": "8731ecb3-3bcc-4ebc-b46ff7dd12dd",
                 "status": "completed",
-                "payment_status": "completed",
-                "result": "Job completed successfully"
+                "result": "Resume generated successfully"
             }
         }
 

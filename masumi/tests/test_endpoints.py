@@ -4,7 +4,7 @@ Tests for endpoint handlers, validation, and FastAPI integration.
 
 import pytest
 import asyncio
-from unittest.mock import Mock
+from unittest.mock import Mock, AsyncMock
 from masumi.endpoints import AgentEndpointHandler
 from masumi.validation import validate_input_data, ValidationError
 from masumi.job_manager import JobManager, InMemoryJobStorage
@@ -232,10 +232,11 @@ def test_job_manager():
     manager = JobManager()
     
     # Create a job
+    payment_mock = AsyncMock()
     job_id = asyncio.run(manager.create_job(
         identifier_from_purchaser="purchaser-123",
         input_data={"text": "test"},
-        payment=Mock(),  # Mock payment instance
+        payment=payment_mock,  # AsyncMock payment instance
         blockchain_identifier="blockchain-123",
         pay_by_time=1234567890,
         submit_result_time=1234567900,
