@@ -45,7 +45,7 @@ def run(
     agent_identifier: Optional[str] = None,
     network: Optional[str] = None,
     host: str = "0.0.0.0",
-    port: int = 8080,
+    port: Optional[int] = None,
     **kwargs
 ) -> None:
     """
@@ -61,7 +61,7 @@ def run(
         agent_identifier: Optional agent identifier (if None, read from AGENT_IDENTIFIER env var)
         network: Optional network name (if None, read from NETWORK env var or defaults to "Preprod")
         host: Host to bind to (default: "0.0.0.0")
-        port: Port to bind to (default: 8080)
+        port: Port to bind to (if None, read from PORT env var or defaults to 8080)
         **kwargs: Additional arguments passed to MasumiAgentServer
     """
     # Load .env file if available (optional dependency)
@@ -91,6 +91,18 @@ def run(
     # Load network from environment if not provided
     if network is None:
         network = os.getenv("NETWORK", "Preprod")
+
+    # Load port from environment if not provided
+    if port is None:
+        env_port = os.getenv("PORT")
+        if env_port:
+            try:
+                port = int(env_port)
+            except ValueError:
+                logger.warning(f"Invalid PORT environment variable: {env_port}. Using default 8080.")
+                port = 8080
+        else:
+            port = 8080
     
     # Load seller_vkey from environment if not provided in kwargs
     if "seller_vkey" not in kwargs:
@@ -478,6 +490,7 @@ def show_help():
     print("\n  Optional:")
     print("    PAYMENT_SERVICE_URL   Payment service URL (defaults to production)")
     print("    NETWORK               Network: 'Preprod' or 'Mainnet' (defaults to 'Preprod')")
+    print("    PORT                  Port to bind to (defaults to 8080)")
     print("\n  Note: Environment variables can be set in a .env file")
     print("        (.env files are automatically loaded)")
     

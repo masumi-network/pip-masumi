@@ -456,6 +456,7 @@ def _get_env_template(database: Optional[str], framework: Optional[str], additio
         "# Optional Masumi Settings",
         "PAYMENT_SERVICE_URL=https://payment.masumi.network/api/v1",
         "NETWORK=Preprod  # Options: Preprod or Mainnet",
+        "PORT=8080",
         "",
     ]
     
@@ -550,6 +551,7 @@ A Masumi agent project generated with `masumi scaffold`.
 
 - `PAYMENT_SERVICE_URL`: Payment service URL (defaults to production)
 - `NETWORK`: Network to use - 'Preprod' or 'Mainnet' (defaults to 'Preprod')
+- `PORT`: Port to bind to (defaults to 8080)
 """
     
     if database:
