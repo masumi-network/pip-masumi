@@ -5,6 +5,7 @@ FastAPI server framework for MIP-003 agent endpoints.
 import asyncio
 import json
 import logging
+import uuid
 from typing import Optional, Callable, Dict, Any, Awaitable, Union
 from fastapi import FastAPI, HTTPException, Query
 
@@ -261,7 +262,7 @@ class MasumiAgentServer:
                 input_schema = self.handler.get_input_schema()
             
             return StatusResponse(
-                id=job_id,
+                id=str(uuid.uuid4()),
                 status=status,
                 input_schema=input_schema,
                 result=result_string
