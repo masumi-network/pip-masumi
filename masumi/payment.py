@@ -344,10 +344,13 @@ class Payment:
         Start monitoring payment status at regular intervals.
         
         Args:
-            callback (Callable[[str], None], optional): Function to call when a payment is ready to process.
+            callback (Callable, optional): Function to call when a payment is ready to process.
                 The callback is triggered when payment reaches "FundsLocked" state (payment confirmed).
-                The function will receive the payment_id as its parameter.
+                The function will receive the full payment dict as its parameter.
+                Can be either a regular function or an async function.
+                The callback runs in a separate task to avoid blocking the monitoring loop.
                 If the callback fails, the payment will remain in tracking for retry on the next interval.
+>>>>>>> 0bc42b4 (fix status endpoint execution)
             interval_seconds (int, optional): Interval between status checks in seconds. 
                                              Defaults to 60.
         """
@@ -380,35 +383,37 @@ class Payment:
                                 # Trigger callback ONLY when payment is ready to process (FundsLocked)
                                 # and we haven't triggered it yet
                                 if on_chain_state == "FundsLocked" and payment_id not in self._callback_triggered_ids:
-                                    logger.info(f"Payment {payment_id} is ready (FundsLocked), triggering callback")
+                                    logger.info(f"Payment {payment_id} reached FundsLocked state, triggering callback")
+                                    self._callback_triggered_ids.add(payment_id)
                                     
                                     # Call the callback function if provided
                                     if callback:
-                                        try:
-                                            logger.info(f"Calling callback function for payment {payment_id}")
-                                            if asyncio.iscoroutinefunction(callback):
-                                                await callback(payment_id)
-                                            else:
-                                                callback(payment_id)
-                                            
-                                            # Mark as triggered instead of removing immediately
-                                            # This allows us to continue monitoring until on-chain completion
-                                            logger.info(f"Callback completed successfully for payment {payment_id}")
-                                            self._callback_triggered_ids.add(payment_id)
-                                        except Exception as e:
-                                            logger.error(f"Error in callback function for payment {payment_id}: {str(e)}", exc_info=True)
-                                            # Keep payment_id in tracking so monitoring can retry on next interval
-                                            logger.info(f"Keeping payment {payment_id} in tracking for retry")
+                                        async def run_callback():
+                                            """Run callback in a separate task to avoid blocking"""
+                                            try:
+                                                logger.info(f"Calling callback function for payment {payment_id}")
+                                                if asyncio.iscoroutinefunction(callback):
+                                                    await callback(payment)
+                                                else:
+                                                    # Run synchronous callback in thread pool to avoid blocking
+                                                    loop = asyncio.get_event_loop()
+                                                    await loop.run_in_executor(None, callback, payment)
+                                            except Exception as e:
+                                                logger.error(f"Error in callback function for payment {payment_id}: {str(e)}", exc_info=True)
+                                        
+                                        # Create task for callback execution (non-blocking)
+                                        asyncio.create_task(run_callback())
                                 
-                                # Remove payment from tracking if it's already complete (final states)
-                                # This handles cases where payment was completed outside this monitoring loop
-                                elif (on_chain_state == "Complete" or 
-                                      next_action == "PaymentComplete" or 
-                                      next_action == "None"):
-                                    logger.info(f"Payment {payment_id} reached final state '{on_chain_state}', removing from tracking")
+                                # Remove from tracking when payment is actually complete
+                                # This happens after the callback has processed the payment and submitted results
+                                if (on_chain_state == "Complete" or
+                                    next_action == "PaymentComplete" or 
+                                    next_action == "None"):
+                                    
+                                    logger.info(f"Payment {payment_id} is complete, removing from tracking")
                                     self.payment_ids.remove(payment_id)
-                                    if payment_id in self._callback_triggered_ids:
-                                        self._callback_triggered_ids.remove(payment_id)
+                                    # Clean up callback tracking
+                                    self._callback_triggered_ids.discard(payment_id)
                 
                     # If no more payments to monitor, exit the loop
                     if not self.payment_ids:
@@ -438,6 +443,8 @@ class Payment:
             logger.info("Stopping payment status monitoring")
             self._status_check_task.cancel()
             self._status_check_task = None
+            # Clean up callback tracking
+            self._callback_triggered_ids.clear()
         else:
             logger.debug("No monitoring task to stop")
 
