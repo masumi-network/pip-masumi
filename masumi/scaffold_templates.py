@@ -445,31 +445,51 @@ def _get_requirements_txt(database: Optional[str], framework: Optional[str], add
 
 
 def _get_env_template(database: Optional[str], framework: Optional[str], additional_libs: List[str]) -> str:
-    """Generate .env file template."""
+    """Generate .env file template matching the root .env.example format."""
     env_lines = [
-        "# Masumi Configuration",
-        "# Get these values after registering your agent on the Masumi network",
-        "AGENT_IDENTIFIER=your_agent_identifier_here",
-        "PAYMENT_API_KEY=your_payment_api_key_here",
-        "SELLER_VKEY=your_seller_vkey_here",
+        "# Masumi Agent Configuration",
+        "# Copy this file to .env: cp .env.example .env",
+        "# Get credentials from: https://admin.masumi.network",
         "",
-        "# Optional Masumi Settings",
+        "# ============================================",
+        "# REQUIRED (for API mode)",
+        "# ============================================",
+        "AGENT_IDENTIFIER=your-agent-id-here",
+        "SELLER_VKEY=your-seller-vkey-here",
+        "PAYMENT_API_KEY=your-payment-api-key-here",
+        "",
+        "# ============================================",
+        "# OPTIONAL",
+        "# ============================================",
+        "# Network: Preprod (testnet) or Mainnet (production)",
+        "NETWORK=Preprod",
+        "",
+        "# Payment service URL",
         "PAYMENT_SERVICE_URL=https://payment.masumi.network/api/v1",
-        "NETWORK=Preprod  # Options: Preprod or Mainnet",
-        "PORT=8080",
+        "",
+        "# Server configuration",
+        "#HOST=0.0.0.0",
+        "#PORT=8080",
+        "",
+        "# Testing - skip blockchain payments",
+        "#MOCK_PAYMENTS=false",
         "",
     ]
     
     # Database environment variables
     if database == "sqlite":
         env_lines.extend([
-            "# SQLite Configuration",
+            "# ============================================",
+            "# DATABASE: SQLite",
+            "# ============================================",
             "DB_PATH=agent.db",
             "",
         ])
     elif database == "postgresql":
         env_lines.extend([
-            "# PostgreSQL Configuration",
+            "# ============================================",
+            "# DATABASE: PostgreSQL",
+            "# ============================================",
             "DB_HOST=localhost",
             "DB_PORT=5432",
             "DB_NAME=masumi_agent",
@@ -479,14 +499,18 @@ def _get_env_template(database: Optional[str], framework: Optional[str], additio
         ])
     elif database == "mongodb":
         env_lines.extend([
-            "# MongoDB Configuration",
+            "# ============================================",
+            "# DATABASE: MongoDB",
+            "# ============================================",
             "MONGO_URI=mongodb://localhost:27017/",
             "DB_NAME=masumi_agent",
             "",
         ])
     elif database == "redis":
         env_lines.extend([
-            "# Redis Configuration",
+            "# ============================================",
+            "# DATABASE: Redis",
+            "# ============================================",
             "REDIS_HOST=localhost",
             "REDIS_PORT=6379",
             "REDIS_DB=0",
@@ -496,14 +520,18 @@ def _get_env_template(database: Optional[str], framework: Optional[str], additio
     # Framework/API keys
     if framework == "langchain" or "openai" in additional_libs:
         env_lines.extend([
-            "# OpenAI Configuration (if using OpenAI)",
+            "# ============================================",
+            "# API KEYS: OpenAI",
+            "# ============================================",
             "OPENAI_API_KEY=your_openai_api_key_here",
             "",
         ])
     
     if "anthropic" in additional_libs:
         env_lines.extend([
-            "# Anthropic Configuration",
+            "# ============================================",
+            "# API KEYS: Anthropic",
+            "# ============================================",
             "ANTHROPIC_API_KEY=your_anthropic_api_key_here",
             "",
         ])
