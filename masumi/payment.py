@@ -350,7 +350,6 @@ class Payment:
                 Can be either a regular function or an async function.
                 The callback runs in a separate task to avoid blocking the monitoring loop.
                 If the callback fails, the payment will remain in tracking for retry on the next interval.
->>>>>>> 0bc42b4 (fix status endpoint execution)
             interval_seconds (int, optional): Interval between status checks in seconds. 
                                              Defaults to 60.
         """
