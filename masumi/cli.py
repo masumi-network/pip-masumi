@@ -123,37 +123,13 @@ def run(
     # Display startup information
     display_host = "127.0.0.1" if host == "0.0.0.0" else host
     print("\n" + "=" * 70)
-    print("🚀 Masumi Agent Server Starting...")
+    print("🚀 Starting Masumi Agent Server...")
     print("=" * 70)
-
-    # Agent configuration
-    print(f"\nAgent Configuration:")
-    if agent_identifier:
-        print(f"  Agent ID:    {agent_identifier}")
-    else:
-        print(f"  Agent ID:    ⚠️  Not configured (standalone mode only)")
-    print(f"  Network:     {network}")
-
-    # Endpoints
-    print(f"\n📡 MIP-003 Endpoints:")
-    print(f"  Start Job:        http://{display_host}:{port}/start_job")
-    print(f"  Job Status:       http://{display_host}:{port}/status")
-    print(f"  Availability:     http://{display_host}:{port}/availability")
-    print(f"  Input Schema:     http://{display_host}:{port}/input_schema")
-
-    # Additional endpoints
-    print(f"\n🔧 Additional Endpoints:")
-    print(f"  Health Check:     http://{display_host}:{port}/health")
-    print(f"  Swagger UI:       http://{display_host}:{port}/docs")
-    print(f"  OpenAPI JSON:     http://{display_host}:{port}/openapi.json")
-
-    # Quick tips
-    print(f"\n💡 Quick Tips:")
-    print(f"  • Test your setup:   curl http://{display_host}:{port}/health")
-    print(f"  • View API docs:     Open http://{display_host}:{port}/docs in browser")
-    print(f"  • Check config:      masumi validate")
-
-    print("\n" + "=" * 70 + "\n")
+    print(f"API Documentation:        http://{display_host}:{port}/docs")
+    print(f"Availability Check:       http://{display_host}:{port}/availability")
+    print(f"Input Schema:             http://{display_host}:{port}/input_schema")
+    print(f"Start Job:                http://{display_host}:{port}/start_job")
+    print("=" * 70 + "\n")
     
     # Run server
     uvicorn.run(app, host=host, port=port, log_level="info")
@@ -539,156 +515,6 @@ def show_help():
     print()
 
 
-def validate_command(args):
-    """Handle the 'validate' command - validate Masumi configuration."""
-    # Check for help flag
-    if "--help" in args or "-h" in args:
-        print("Masumi Agent Builder CLI - Validate Command")
-        print("=" * 70)
-        print("\nValidate Masumi configuration and connectivity")
-        print("\nUsage:")
-        print("  masumi validate")
-        print("\nWhat this command checks:")
-        print("  • Required environment variables are set")
-        print("  • Environment variable formats are valid")
-        print("  • Payment service is reachable")
-        print("  • Configuration is complete for API mode")
-        print("\nExamples:")
-        print("  masumi validate")
-        print("\nSee also:")
-        print("  .env.example         - Example configuration file")
-        print("  TROUBLESHOOTING.md   - Common issues and solutions")
-        sys.exit(0)
-
-    # Load .env file if available
-    _load_dotenv_if_available()
-
-    print("\n" + "=" * 70)
-    print("Masumi Configuration Validation")
-    print("=" * 70 + "\n")
-
-    errors = []
-    warnings = []
-
-    # Check required environment variables
-    print("Required Configuration:")
-    print("-" * 70)
-
-    agent_id = os.getenv("AGENT_IDENTIFIER")
-    if agent_id:
-        print(f"✓ AGENT_IDENTIFIER      {agent_id}")
-    else:
-        print("✗ AGENT_IDENTIFIER      Not set")
-        errors.append("AGENT_IDENTIFIER is not set")
-
-    seller_vkey = os.getenv("SELLER_VKEY")
-    if seller_vkey:
-        # Show first 20 chars only
-        display_vkey = seller_vkey[:20] + "..." if len(seller_vkey) > 20 else seller_vkey
-        print(f"✓ SELLER_VKEY           {display_vkey}")
-    else:
-        print("✗ SELLER_VKEY           Not set")
-        errors.append("SELLER_VKEY is not set")
-
-    payment_key = os.getenv("PAYMENT_API_KEY")
-    if payment_key:
-        print(f"✓ PAYMENT_API_KEY       {'*' * 20} (hidden)")
-    else:
-        print("✗ PAYMENT_API_KEY       Not set")
-        errors.append("PAYMENT_API_KEY is not set")
-
-    print()
-
-    # Check optional configuration
-    print("Optional Configuration:")
-    print("-" * 70)
-
-    network = os.getenv("NETWORK", "Preprod")
-    print(f"✓ NETWORK               {network}")
-    if network not in ["Preprod", "Mainnet"]:
-        warnings.append(f"NETWORK value '{network}' is not standard (use 'Preprod' or 'Mainnet')")
-    elif network == "Preprod":
-        print("  ℹ Using testnet. Switch to 'Mainnet' for production.")
-
-    payment_url = os.getenv("PAYMENT_SERVICE_URL", "https://payment.masumi.network/api/v1")
-    print(f"✓ PAYMENT_SERVICE_URL   {payment_url}")
-
-    port = os.getenv("PORT", "8080")
-    print(f"✓ PORT                  {port}")
-
-    print()
-
-    # Check connectivity
-    print("Connectivity:")
-    print("-" * 70)
-
-    if payment_url and payment_key:
-        try:
-            import requests
-            import time
-
-            start_time = time.time()
-            response = requests.get(
-                f"{payment_url}/health",
-                headers={"token": payment_key},
-                timeout=5
-            )
-            elapsed_ms = int((time.time() - start_time) * 1000)
-
-            if response.status_code == 200:
-                print(f"✓ Payment service       Reachable ({elapsed_ms}ms)")
-            else:
-                print(f"⚠ Payment service       Returned status {response.status_code}")
-                warnings.append(f"Payment service returned unexpected status: {response.status_code}")
-        except requests.exceptions.Timeout:
-            print("✗ Payment service       Timeout (>5s)")
-            errors.append("Payment service connection timeout")
-        except requests.exceptions.ConnectionError as e:
-            print(f"✗ Payment service       Unreachable")
-            errors.append(f"Cannot connect to payment service: {str(e)}")
-        except Exception as e:
-            print(f"✗ Payment service       Error: {str(e)}")
-            errors.append(f"Payment service check failed: {str(e)}")
-    else:
-        print("⊘ Payment service       Skipped (missing credentials)")
-        warnings.append("Cannot test payment service without PAYMENT_SERVICE_URL and PAYMENT_API_KEY")
-
-    print()
-    print("=" * 70)
-
-    # Summary
-    if errors:
-        print("\n❌ Validation Failed\n")
-        print("Errors:")
-        for error in errors:
-            print(f"  ✗ {error}")
-        print("\nTo fix these issues:")
-        print("  1. Copy .env.example to .env:")
-        print("     cp .env.example .env")
-        print("\n  2. Register your agent at:")
-        print("     https://admin.masumi.network")
-        print("\n  3. Fill in the required values in .env")
-        print("\n  4. Run validation again:")
-        print("     masumi validate")
-        print("\nFor more help, see TROUBLESHOOTING.md")
-        print()
-        sys.exit(1)
-
-    if warnings:
-        print("\n⚠️  Validation Passed with Warnings\n")
-        print("Warnings:")
-        for warning in warnings:
-            print(f"  ⚠ {warning}")
-        print()
-    else:
-        print("\n✅ All Checks Passed!\n")
-
-    print("Next steps:")
-    print("  → Test your agent:  masumi run agent.py --standalone")
-    print("  → Run with payments: masumi run agent.py")
-    print()
-
-
 def main():
     """Main CLI entry point."""
     # Handle --help flag
@@ -701,11 +527,9 @@ def main():
         print("\nUsage:")
         print("  masumi scaffold [--name NAME] [--dir DIR] [--database DB] [--framework FW] [--libs LIBS]")
         print("  masumi run <file.py> [--standalone] [--input 'JSON']")
-        print("  masumi validate                  # Validate configuration")
         print("\nCommands:")
         print("  scaffold  Generate a new Masumi agent project with full structure")
         print("  run       Run an agent file (API mode by default, use --standalone for direct execution)")
-        print("  validate  Validate Masumi configuration and connectivity")
         print("\nUse 'masumi --help' for detailed information and all options.")
         sys.exit(1)
     
@@ -716,11 +540,8 @@ def main():
         scaffold_command(args)
     elif command == "run":
         run_command(args)
-    elif command == "validate":
-        validate_command(args)
     else:
         print(f"Unknown command: {command}")
-        print("Available commands: scaffold, run, validate")
+        print("Available commands: scaffold, run")
         print("Use 'masumi --help' for detailed information.")
         sys.exit(1)
-

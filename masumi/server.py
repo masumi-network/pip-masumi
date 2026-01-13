@@ -126,11 +126,7 @@ class MasumiAgentServer:
             self.handler.set_provide_input_handler(provide_input_handler)
         if demo_handler:
             self.handler.set_demo_handler(demo_handler)
-
-        # Track server start time for uptime calculation
-        import time
-        self._start_time = time.time()
-
+        
         # Create FastAPI app
         self.app = FastAPI(
             title="Masumi Agent API",
@@ -339,86 +335,7 @@ class MasumiAgentServer:
             except Exception as e:
                 logger.error(f"Error in demo handler: {e}", exc_info=True)
                 raise HTTPException(status_code=500, detail=str(e))
-
-        @self.app.get("/health")
-        async def health_check():
-            """
-            Health check endpoint for monitoring and diagnostics.
-
-            Returns agent status, payment service connectivity, and job statistics.
-            This endpoint is useful for:
-            - Production monitoring
-            - Load balancers
-            - Verifying configuration before testing
-            - Debugging connection issues
-            """
-            import time
-            from datetime import datetime, timezone
-
-            try:
-                # Get job statistics
-                jobs = await self.job_manager.list_jobs()
-                job_stats = {
-                    "active": len([j for j in jobs if j.get("status") == "running"]),
-                    "awaiting_payment": len([j for j in jobs if j.get("status") == "awaiting_payment"]),
-                    "completed": len([j for j in jobs if j.get("status") == "completed"]),
-                    "failed": len([j for j in jobs if j.get("status") == "failed"]),
-                    "total": len(jobs)
-                }
-
-                # Check payment service connectivity
-                payment_service_reachable = False
-                payment_service_error = None
-                try:
-                    import aiohttp
-                    async with aiohttp.ClientSession() as session:
-                        async with session.get(
-                            f"{self.config.payment_service_url}/health",
-                            timeout=aiohttp.ClientTimeout(total=5)
-                        ) as response:
-                            payment_service_reachable = response.status == 200
-                except Exception as e:
-                    payment_service_error = str(e)
-
-                # Calculate uptime if available
-                uptime_seconds = None
-                if hasattr(self, '_start_time'):
-                    uptime_seconds = int(time.time() - self._start_time)
-
-                # Build response
-                health_data = {
-                    "status": "healthy" if payment_service_reachable else "degraded",
-                    "timestamp": datetime.now(timezone.utc).isoformat(),
-                    "agent": {
-                        "identifier": self.agent_identifier,
-                        "network": self.network,
-                        "version": "0.1.41"  # SDK version
-                    },
-                    "payment_service": {
-                        "url": self.config.payment_service_url,
-                        "reachable": payment_service_reachable
-                    },
-                    "jobs": job_stats
-                }
-
-                # Add optional fields
-                if payment_service_error:
-                    health_data["payment_service"]["error"] = payment_service_error
-
-                if uptime_seconds is not None:
-                    health_data["uptime_seconds"] = uptime_seconds
-
-                return health_data
-
-            except Exception as e:
-                logger.error(f"Error in health check: {e}", exc_info=True)
-                # Return unhealthy status but don't fail
-                return {
-                    "status": "unhealthy",
-                    "timestamp": datetime.now(timezone.utc).isoformat(),
-                    "error": str(e)
-                }
-
+    
     async def _handle_payment_confirmed(self, job_id: str, payment_id: str):
         """Handle payment confirmation - start background task for agent logic."""
         try:

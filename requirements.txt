@@ -6,3 +6,4 @@ canonicaljson>=1.6.3
 fastapi>=0.100.0
 uvicorn[standard]>=0.23.0
 pydantic>=2.0.0
+inquirerpy>=0.3.4
