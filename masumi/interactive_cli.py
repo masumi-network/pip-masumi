@@ -1,5 +1,5 @@
 """
-Interactive CLI utilities for Masumi scaffold with animations and visual feedback.
+Interactive CLI utilities for Masumi init with animations and visual feedback.
 """
 
 import sys
@@ -45,7 +45,7 @@ def clear_line():
 
 
 def show_banner():
-    """Display the Masumi scaffold banner."""
+    """Display the Masumi init banner."""
     banner = f"""
 {Colors.CYAN}{Colors.BOLD}
 ╔══════════════════════════════════════════════════════════════════╗
@@ -57,7 +57,7 @@ def show_banner():
 ║   ██║ ╚═╝ ██║██║  ██║███████║╚██████╔╝██║ ╚═╝ ██║██║             ║
 ║   ╚═╝     ╚═╝╚═╝  ╚═╝╚══════╝ ╚═════╝ ╚═╝     ╚═╝╚═╝             ║
 ║                                                                  ║
-║              {Colors.GREEN}Agent Project Scaffolder{Colors.CYAN}                      ║
+║              {Colors.GREEN}Agent Project Initializer{Colors.CYAN}                      ║
 ║                                                                  ║
 ╚══════════════════════════════════════════════════════════════════╝
 {Colors.RESET}

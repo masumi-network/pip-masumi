@@ -23,14 +23,14 @@ pip install masumi
 
 The easiest way to create and run a Masumi agent:
 
-**1. Scaffold a new agent:**
+**1. Initialize a new agent:**
 ```bash
-masumi scaffold
+masumi init
 ```
 
-This will generate an `agent.py` file with all the boilerplate. You can also specify database and framework:
+This will generate a project structure with all the boilerplate. You can also specify framework:
 ```bash
-masumi scaffold --output my_agent.py --database sqlite --framework langchain
+masumi init --name my-agent --framework langchain
 ```
 
 **2. Edit the generated file** to implement your agent logic in the `process_job` function.
@@ -315,30 +315,152 @@ cancel_result = await purchase.cancel_refund_request()
 
 ## CLI Commands
 
-The Masumi package includes a CLI for scaffolding and running agents:
+The Masumi package includes a CLI for initializing and running agents:
 
-### Scaffold Command
+### Init Command
 
-Generate a new agent file with database and framework integration:
+Generate a new agent project with framework integration:
 
 ```bash
-# Interactive scaffold (prompts for options)
-masumi scaffold
+# Interactive init (prompts for options)
+masumi init
 
-# Non-interactive scaffold with options
-masumi scaffold --output my_agent.py --database sqlite --framework langchain
+# Non-interactive init with options
+masumi init --name my-agent --framework langchain
 ```
-
-**Supported databases:**
-- `sqlite` - SQLite (file-based, no setup needed)
-- `postgresql` - PostgreSQL (requires connection string)
-- `mongodb` - MongoDB (requires connection string)
-- `redis` - Redis (for caching/sessions)
 
 **Supported frameworks:**
 - `langchain` - LangChain (LLM orchestration)
 - `crewai` - CrewAI (multi-agent framework)
 - `autogen` - AutoGen (conversational AI agents)
+- `none` - Plain Python (default)
+
+**Adding a Database:**
+
+The `init` command doesn't include database setup by default. If you need database functionality, you can add it manually. Here are examples for common databases:
+
+#### SQLite
+
+1. **Add to `agent.py`:**
+   ```python
+   import sqlite3
+   import os
+   
+   DB_PATH = os.getenv("DB_PATH", "agent.db")
+   
+   def get_db():
+       conn = sqlite3.connect(DB_PATH)
+       return conn
+   ```
+
+2. **Use in `process_job`:**
+   ```python
+   conn = get_db()
+   cursor = conn.cursor()
+   cursor.execute("INSERT INTO jobs (purchaser_id, input_data) VALUES (?, ?)", 
+                  (identifier_from_purchaser, str(input_data)))
+   conn.commit()
+   conn.close()
+   ```
+
+#### PostgreSQL
+
+1. **Add to `requirements.txt`:**
+   ```
+   psycopg2-binary>=2.9.0
+   ```
+
+2. **Add to `agent.py`:**
+   ```python
+   import psycopg2
+   from psycopg2 import pool
+   import os
+   
+   DB_CONFIG = {
+       "host": os.getenv("DB_HOST", "localhost"),
+       "port": os.getenv("DB_PORT", "5432"),
+       "database": os.getenv("DB_NAME", "masumi_agent"),
+       "user": os.getenv("DB_USER", "postgres"),
+       "password": os.getenv("DB_PASSWORD", "")
+   }
+   
+   db_pool = None
+   
+   def get_db():
+       global db_pool
+       if db_pool is None:
+           db_pool = psycopg2.pool.SimpleConnectionPool(1, 20, **DB_CONFIG)
+       return db_pool.getconn()
+   
+   def return_db(conn):
+       db_pool.putconn(conn)
+   ```
+
+3. **Add to `.env.example`:**
+   ```
+   DB_HOST=localhost
+   DB_PORT=5432
+   DB_NAME=masumi_agent
+   DB_USER=postgres
+   DB_PASSWORD=your_password_here
+   ```
+
+#### MongoDB
+
+1. **Add to `requirements.txt`:**
+   ```
+   pymongo>=4.0.0
+   ```
+
+2. **Add to `agent.py`:**
+   ```python
+   from pymongo import MongoClient
+   import os
+   
+   MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017/")
+   DB_NAME = os.getenv("DB_NAME", "masumi_agent")
+   
+   client = MongoClient(MONGO_URI)
+   db = client[DB_NAME]
+   
+   def get_db():
+       return db
+   ```
+
+3. **Add to `.env.example`:**
+   ```
+   MONGO_URI=mongodb://localhost:27017/
+   DB_NAME=masumi_agent
+   ```
+
+#### Redis
+
+1. **Add to `requirements.txt`:**
+   ```
+   redis>=4.0.0
+   ```
+
+2. **Add to `agent.py`:**
+   ```python
+   import redis
+   import os
+   
+   REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
+   REDIS_PORT = int(os.getenv("REDIS_PORT", "6379"))
+   REDIS_DB = int(os.getenv("REDIS_DB", "0"))
+   
+   redis_client = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, db=REDIS_DB, decode_responses=True)
+   
+   def get_redis():
+       return redis_client
+   ```
+
+3. **Add to `.env.example`:**
+   ```
+   REDIS_HOST=localhost
+   REDIS_PORT=6379
+   REDIS_DB=0
+   ```
 
 ### Run Command
 
