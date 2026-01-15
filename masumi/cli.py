@@ -1,5 +1,5 @@
 """
-CLI module for Masumi agent execution and scaffolding.
+CLI module for Masumi agent execution and initialization.
 """
 
 import os
@@ -345,50 +345,38 @@ def run_command(args):
             sys.exit(1)
 
 
-def scaffold_command(args):
-    """Handle the 'scaffold' command."""
+def init_command(args):
+    """Handle the 'init' command."""
     from .scaffold_templates import scaffold
     
     # Check for help flag
     if "--help" in args or "-h" in args:
-        print("Masumi Agent Builder CLI - Scaffold Command")
+        print("Masumi Agent Builder CLI - Init Command")
         print("=" * 70)
         print("\nGenerate a new Masumi agent project with full structure")
         print("\nUsage:")
-        print("  masumi scaffold [OPTIONS]")
+        print("  masumi init [OPTIONS]")
         print("\nOptions:")
         print("  --name NAME            Project name (default: masumi-agent)")
         print("  --dir DIRECTORY        Output directory (default: project name)")
-        print("  --database DB          Database choice (see options below)")
         print("  --framework FW         Framework choice (see options below)")
-        print("  --libs LIBS            Additional libraries, comma-separated")
-        print("                         (options: openai, anthropic, requests, pandas, numpy)")
         print("  --non-interactive      Skip interactive prompts")
         print("  --help, -h             Show this help message")
-        print("\nDatabase Options:")
-        print("  none        No database (default)")
-        print("  sqlite      SQLite - file-based, no setup needed")
-        print("  postgresql  PostgreSQL - requires connection string")
-        print("  mongodb     MongoDB - requires connection string")
-        print("  redis       Redis - for caching/sessions")
         print("\nFramework Options:")
         print("  none      Plain Python (default)")
         print("  langchain LangChain - LLM orchestration")
         print("  crewai    CrewAI - multi-agent framework")
         print("  autogen   AutoGen - conversational AI agents")
         print("\nExamples:")
-        print("  masumi scaffold")
-        print("  masumi scaffold --name my-agent --database sqlite --framework langchain")
-        print("  masumi scaffold --name my-agent --database postgresql --framework crewai --libs openai,requests")
-        print("  masumi scaffold --dir my-project --database sqlite --non-interactive")
+        print("  masumi init")
+        print("  masumi init --name my-agent --framework langchain")
+        print("  masumi init --dir my-project --non-interactive")
         sys.exit(0)
     
     # Parse arguments
     project_name = None
     output_dir = None
-    database = None
     framework = None
-    additional_libs = None
     interactive = True
     
     i = 0
@@ -399,15 +387,8 @@ def scaffold_command(args):
         elif args[i] in ["--dir", "--output-dir", "--directory"] and i + 1 < len(args):
             output_dir = args[i + 1]
             i += 2
-        elif args[i] == "--database" and i + 1 < len(args):
-            database = args[i + 1]
-            i += 2
         elif args[i] == "--framework" and i + 1 < len(args):
             framework = args[i + 1]
-            i += 2
-        elif args[i] in ["--libs", "--libraries"] and i + 1 < len(args):
-            libs_str = args[i + 1]
-            additional_libs = [lib.strip() for lib in libs_str.split(",") if lib.strip()]
             i += 2
         elif args[i] == "--non-interactive":
             interactive = False
@@ -418,9 +399,7 @@ def scaffold_command(args):
     scaffold(
         project_name=project_name,
         output_dir=output_dir,
-        database=database,
         framework=framework,
-        additional_libs=additional_libs,
         interactive=interactive
     )
 
@@ -430,26 +409,23 @@ def show_help():
     print("Masumi Agent Builder CLI")
     print("=" * 70)
     print("\nA command-line tool for building and running Masumi agents with")
-    print("integrated payment processing and database/framework support.")
+    print("integrated payment processing and framework support.")
     print("\n" + "=" * 70)
     print("\nCOMMANDS")
     print("-" * 70)
     
-    print("\n  scaffold")
+    print("\n  init")
     print("    Generate a new Masumi agent project with full structure")
     print("\n    Usage:")
-    print("      masumi scaffold [OPTIONS]")
+    print("      masumi init [OPTIONS]")
     print("\n    Options:")
     print("      --name NAME            Project name (default: masumi-agent)")
     print("      --dir DIRECTORY        Output directory (default: project name)")
-    print("      --database DB          Database choice (see options below)")
     print("      --framework FW         Framework choice (see options below)")
-    print("      --libs LIBS            Additional libraries, comma-separated")
     print("      --non-interactive      Skip interactive prompts")
     print("\n    Examples:")
-    print("      masumi scaffold")
-    print("      masumi scaffold --name my-agent --database sqlite --framework langchain")
-    print("      masumi scaffold --name my-agent --libs openai,requests --database postgresql")
+    print("      masumi init")
+    print("      masumi init --name my-agent --framework langchain")
     
     print("\n  run")
     print("    Run an agent file (API mode by default)")
@@ -464,15 +440,8 @@ def show_help():
     print("      masumi run agent.py --standalone --input '{\"text\": \"Hello\"}'")
     
     print("\n" + "=" * 70)
-    print("\nSCAFFOLDING OPTIONS")
+    print("\nINIT OPTIONS")
     print("-" * 70)
-    
-    print("\n  Databases:")
-    print("    none        No database (default)")
-    print("    sqlite      SQLite - file-based, no setup needed")
-    print("    postgresql  PostgreSQL - requires connection string")
-    print("    mongodb     MongoDB - requires connection string")
-    print("    redis       Redis - for caching/sessions")
     
     print("\n  Frameworks:")
     print("    none      Plain Python (default)")
@@ -498,7 +467,7 @@ def show_help():
     print("\nQUICK START")
     print("-" * 70)
     print("\n  1. Generate a new agent project:")
-    print("     masumi scaffold --name my-agent --database sqlite --framework langchain")
+    print("     masumi init --name my-agent --framework langchain")
     print("\n  2. Set up the project:")
     print("     cd my-agent")
     print("     pip install -r requirements.txt")
@@ -525,10 +494,10 @@ def main():
     if len(sys.argv) < 2:
         print("Masumi Agent Builder CLI")
         print("\nUsage:")
-        print("  masumi scaffold [--name NAME] [--dir DIR] [--database DB] [--framework FW] [--libs LIBS]")
+        print("  masumi init [--name NAME] [--dir DIR] [--framework FW]")
         print("  masumi run <file.py> [--standalone] [--input 'JSON']")
         print("\nCommands:")
-        print("  scaffold  Generate a new Masumi agent project with full structure")
+        print("  init      Generate a new Masumi agent project with full structure")
         print("  run       Run an agent file (API mode by default, use --standalone for direct execution)")
         print("\nUse 'masumi --help' for detailed information and all options.")
         sys.exit(1)
@@ -536,12 +505,12 @@ def main():
     command = sys.argv[1]
     args = sys.argv[2:]
     
-    if command == "scaffold":
-        scaffold_command(args)
+    if command == "init":
+        init_command(args)
     elif command == "run":
         run_command(args)
     else:
         print(f"Unknown command: {command}")
-        print("Available commands: scaffold, run")
+        print("Available commands: init, run")
         print("Use 'masumi --help' for detailed information.")
         sys.exit(1)

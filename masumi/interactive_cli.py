@@ -1,5 +1,5 @@
 """
-Interactive CLI utilities for Masumi scaffold with animations and visual feedback.
+Interactive CLI utilities for Masumi init with animations and visual feedback.
 """
 
 import sys
