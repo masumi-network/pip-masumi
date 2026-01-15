@@ -514,4 +514,3 @@ def main():
         print("Available commands: init, run")
         print("Use 'masumi --help' for detailed information.")
         sys.exit(1)
-

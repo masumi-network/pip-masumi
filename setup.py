@@ -21,6 +21,7 @@ setup(
         "uvicorn[standard]>=0.23.0",
         "pydantic>=2.0.0",
         "python-dotenv>=0.19.0",
+        "InquirerPy>=0.3.4",
     ],
     author="Patrick Tobler",
     author_email="patrick@nmkr.io",

@@ -146,27 +146,95 @@ def _get_requirements_txt(framework: Optional[str]) -> str:
     return "\n".join(requirements) + "\n"
 
 
-def _get_env_template(framework: Optional[str]) -> str:
-    """Generate .env file template."""
+def _get_env_template(database: Optional[str], framework: Optional[str], additional_libs: List[str]) -> str:
+    """Generate .env file template matching the root .env.example format."""
     env_lines = [
-        "# Masumi Configuration",
-        "# Get these values after registering your agent on the Masumi network",
-        "AGENT_IDENTIFIER=your_agent_identifier_here",
-        "PAYMENT_API_KEY=your_payment_api_key_here",
-        "SELLER_VKEY=your_seller_vkey_here",
+        "# Masumi Agent Configuration",
+        "# Copy this file to .env: cp .env.example .env",
+        "# Get credentials from: https://admin.masumi.network",
         "",
-        "# Optional Masumi Settings",
+        "# ============================================",
+        "# REQUIRED (for API mode)",
+        "# ============================================",
+        "AGENT_IDENTIFIER=your-agent-id-here",
+        "SELLER_VKEY=your-seller-vkey-here",
+        "PAYMENT_API_KEY=your-payment-api-key-here",
+        "",
+        "# ============================================",
+        "# OPTIONAL",
+        "# ============================================",
+        "# Network: Preprod (testnet) or Mainnet (production)",
+        "NETWORK=Preprod",
+        "",
+        "# Payment service URL",
         "PAYMENT_SERVICE_URL=https://payment.masumi.network/api/v1",
-        "NETWORK=Preprod  # Options: Preprod or Mainnet",
-        "PORT=8080",
+        "",
+        "# Server configuration",
+        "#HOST=0.0.0.0",
+        "#PORT=8080",
+        "",
+        "# Testing - skip blockchain payments",
+        "#MOCK_PAYMENTS=false",
         "",
     ]
+    
+    # Database environment variables
+    if database == "sqlite":
+        env_lines.extend([
+            "# ============================================",
+            "# DATABASE: SQLite",
+            "# ============================================",
+            "DB_PATH=agent.db",
+            "",
+        ])
+    elif database == "postgresql":
+        env_lines.extend([
+            "# ============================================",
+            "# DATABASE: PostgreSQL",
+            "# ============================================",
+            "DB_HOST=localhost",
+            "DB_PORT=5432",
+            "DB_NAME=masumi_agent",
+            "DB_USER=postgres",
+            "DB_PASSWORD=your_password_here",
+            "",
+        ])
+    elif database == "mongodb":
+        env_lines.extend([
+            "# ============================================",
+            "# DATABASE: MongoDB",
+            "# ============================================",
+            "MONGO_URI=mongodb://localhost:27017/",
+            "DB_NAME=masumi_agent",
+            "",
+        ])
+    elif database == "redis":
+        env_lines.extend([
+            "# ============================================",
+            "# DATABASE: Redis",
+            "# ============================================",
+            "REDIS_HOST=localhost",
+            "REDIS_PORT=6379",
+            "REDIS_DB=0",
+            "",
+        ])
     
     # Framework/API keys
     if framework == "langchain":
         env_lines.extend([
-            "# OpenAI Configuration (if using OpenAI with LangChain)",
+            "# ============================================",
+            "# API KEYS: OpenAI",
+            "# ============================================",
             "OPENAI_API_KEY=your_openai_api_key_here",
+            "",
+        ])
+    
+    if "anthropic" in additional_libs:
+        env_lines.extend([
+            "# ============================================",
+            "# API KEYS: Anthropic",
+            "# ============================================",
+            "ANTHROPIC_API_KEY=your_anthropic_api_key_here",
             "",
         ])
     
@@ -550,7 +618,7 @@ def scaffold(
                 from .interactive_cli import print_success
                 print_success(success_msg)
             elif i == 4:
-                (project_path / ".env.example").write_text(_get_env_template(framework))
+                (project_path / ".env.example").write_text(_get_env_template(None, framework, []))
                 from .interactive_cli import print_success
                 print_success(success_msg)
             elif i == 5:
@@ -567,7 +635,7 @@ def scaffold(
         (project_path / "agent.py").write_text(agent_template)
         (project_path / "main.py").write_text(main_template)
         (project_path / "requirements.txt").write_text(_get_requirements_txt(framework))
-        (project_path / ".env.example").write_text(_get_env_template(framework))
+        (project_path / ".env.example").write_text(_get_env_template(None, framework, []))
         (project_path / "README.md").write_text(_get_readme_template(project_name, framework))
         (project_path / ".gitignore").write_text(_get_gitignore_template())
 
