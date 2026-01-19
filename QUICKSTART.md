@@ -49,7 +49,6 @@ masumi init --name my-agent --framework langchain
 
 The `masumi init` command will generate the following project structure:
 
-```mdx
 import { File, Files } from 'fumadocs-ui/components/files';
 
 <Files>
@@ -60,7 +59,6 @@ import { File, Files } from 'fumadocs-ui/components/files';
   <File name=".gitignore" />
   <File name="README.md" />
 </Files>
-```
 
 **Generated files:**
 - `main.py` - Entry point to start your agent server
