@@ -89,7 +89,7 @@ cp .env.example .env
 
 Edit `.env` with your Masumi network credentials:
 
-```env
+```bash
 # Required - Get these from Masumi admin interface after registering your agent
 AGENT_IDENTIFIER=your-agent-id-from-admin
 PAYMENT_API_KEY=your-payment-api-key
