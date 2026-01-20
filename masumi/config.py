@@ -1,5 +1,3 @@
-import os
-
 class Config:
     """
     Centralized configuration for the masumi_crewai package.
@@ -8,13 +6,15 @@ class Config:
     def __init__(self, payment_service_url: str, payment_api_key: str,
                  registry_service_url: str = None, registry_api_key: str = None,
                  preprod_address: str = None,
-                 mainnet_address: str = None):
+                 mainnet_address: str = None,
+                 verify_ssl: bool = True):
         self.payment_service_url = payment_service_url
         self.payment_api_key = payment_api_key
         self.registry_service_url = registry_service_url
         self.registry_api_key = registry_api_key
         self.preprod_address = preprod_address
         self.mainnet_address = mainnet_address
+        self.verify_ssl = verify_ssl
         self._validate()
 
     def _validate(self):
