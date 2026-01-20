@@ -2,10 +2,10 @@ from dataclasses import dataclass
 from datetime import datetime, timezone, timedelta
 import asyncio
 import logging
-from typing import List, Optional, Dict, Any, Set, Callable
+import json
+from typing import List, Optional, Dict, Any, Set
 import aiohttp
 from .config import Config
-import json
 from .helper_functions import create_masumi_input_hash, create_masumi_output_hash
 
 # Configure logging
@@ -76,6 +76,7 @@ class Payment:
         self.network = network
         self.payment_type = "Web3CardanoV1"
         self.payment_ids: Set[str] = set()
+        self._callback_triggered_ids: Set[str] = set()
         self.identifier_from_purchaser = identifier_from_purchaser
         self._status_check_task: Optional[asyncio.Task] = None
         self.config = config
@@ -146,7 +147,9 @@ class Payment:
         logger.info(f"Payment request payload prepared: {payload}")
 
         try:
-            async with aiohttp.ClientSession() as session:
+            # Create connector with SSL configuration from config
+            connector = aiohttp.TCPConnector(ssl=self.config.verify_ssl)
+            async with aiohttp.ClientSession(connector=connector) as session:
                 logger.debug("Sending payment request to API")
                 async with session.post(
                     f"{self.config.payment_service_url}/payment/",
@@ -171,8 +174,8 @@ class Payment:
                     result = await response.json()
                     new_payment_id = result["data"]["blockchainIdentifier"]
                     self.payment_ids.add(new_payment_id)
-                    
-                    # Extract time values from the response
+                    logger.info(f"Payment request created successfully. ID: {new_payment_id}")
+                    logger.info(f"Payment Details: {json.dumps(result['data'], indent=2)}")
                     time_values = {
                         "payByTime": result["data"]["payByTime"],
                         "submitResultTime": result["data"]["submitResultTime"],
@@ -221,7 +224,9 @@ class Payment:
         cursor_id = None
         
         try:
-            async with aiohttp.ClientSession() as session:
+            # Create connector with SSL configuration from config
+            connector = aiohttp.TCPConnector(ssl=self.config.verify_ssl)
+            async with aiohttp.ClientSession(connector=connector) as session:
                 while True:
                     # Build query parameters
                     params = {
@@ -306,7 +311,9 @@ class Payment:
         logger.debug(f"Payment completion payload: {payload}")
         
         try:
-            async with aiohttp.ClientSession() as session:
+            # Create connector with SSL configuration from config
+            connector = aiohttp.TCPConnector(ssl=self.config.verify_ssl)
+            async with aiohttp.ClientSession(connector=connector) as session:
                 logger.debug("Sending payment completion request to API")
                 async with session.post(
                     f"{self.config.payment_service_url}/payment/submit-result",
@@ -326,7 +333,9 @@ class Payment:
                     if response.status != 200:
                         error_text = await response.text()
                         logger.error(f"Payment completion failed with status {response.status}: {error_text}")
-                        raise Exception(f"Payment completion failed: {error_text}")
+                        # Log the payload that failed
+                        logger.error(f"Failed payload: {payload}")
+                        raise Exception(f"Payment completion failed (status {response.status}): {error_text}")
                     
                     result = await response.json()
                     logger.info(f"Payment completion request successful for {blockchain_identifier}")
@@ -341,8 +350,12 @@ class Payment:
         Start monitoring payment status at regular intervals.
         
         Args:
-            callback (Callable[[str], None], optional): Function to call when a payment is completed.
-                The function will receive the payment_id as its parameter.
+            callback (Callable, optional): Function to call when a payment is ready to process.
+                The callback is triggered when payment reaches "FundsLocked" state (payment confirmed).
+                The function will receive the full payment dict as its parameter.
+                Can be either a regular function or an async function.
+                The callback runs in a separate task to avoid blocking the monitoring loop.
+                If the callback fails, the payment will remain in tracking for retry on the next interval.
             interval_seconds (int, optional): Interval between status checks in seconds. 
                                              Defaults to 60.
         """
@@ -372,25 +385,40 @@ class Payment:
                                 next_action = payment.get("NextAction", {}).get("requestedAction")
                                 logger.info(f"Payment {payment_id}: onChainState={on_chain_state}, NextAction={next_action}")
                                 
-                                # Check if payment is completed - either by onChainState or NextAction
-                                if (on_chain_state == "FundsLocked" or 
-                                    on_chain_state == "Complete" or
-                                    next_action == "PaymentComplete" or 
-                                    next_action == "None"):
-                                    
-                                    logger.info(f"Payment {payment_id} completed, removing from tracking")
-                                    self.payment_ids.remove(payment_id)
+                                # Trigger callback ONLY when payment is ready to process (FundsLocked)
+                                # and we haven't triggered it yet
+                                if on_chain_state == "FundsLocked" and payment_id not in self._callback_triggered_ids:
+                                    logger.info(f"Payment {payment_id} reached FundsLocked state, triggering callback")
+                                    self._callback_triggered_ids.add(payment_id)
                                     
                                     # Call the callback function if provided
                                     if callback:
-                                        try:
-                                            logger.info(f"Calling callback function for payment {payment_id}")
-                                            if asyncio.iscoroutinefunction(callback):
-                                                await callback(payment_id)
-                                            else:
-                                                callback(payment_id)
-                                        except Exception as e:
-                                            logger.error(f"Error in callback function: {str(e)}")
+                                        async def run_callback():
+                                            """Run callback in a separate task to avoid blocking"""
+                                            try:
+                                                logger.info(f"Calling callback function for payment {payment_id}")
+                                                if asyncio.iscoroutinefunction(callback):
+                                                    await callback(payment)
+                                                else:
+                                                    # Run synchronous callback in thread pool to avoid blocking
+                                                    loop = asyncio.get_event_loop()
+                                                    await loop.run_in_executor(None, callback, payment)
+                                            except Exception as e:
+                                                logger.error(f"Error in callback function for payment {payment_id}: {str(e)}", exc_info=True)
+                                        
+                                        # Create task for callback execution (non-blocking)
+                                        asyncio.create_task(run_callback())
+                                
+                                # Remove from tracking when payment is actually complete
+                                # This happens after the callback has processed the payment and submitted results
+                                if (on_chain_state == "Complete" or
+                                    next_action == "PaymentComplete" or 
+                                    next_action == "None"):
+                                    
+                                    logger.info(f"Payment {payment_id} is complete, removing from tracking")
+                                    self.payment_ids.remove(payment_id)
+                                    # Clean up callback tracking
+                                    self._callback_triggered_ids.discard(payment_id)
                 
                     # If no more payments to monitor, exit the loop
                     if not self.payment_ids:
@@ -420,6 +448,8 @@ class Payment:
             logger.info("Stopping payment status monitoring")
             self._status_check_task.cancel()
             self._status_check_task = None
+            # Clean up callback tracking
+            self._callback_triggered_ids.clear()
         else:
             logger.debug("No monitoring task to stop")
 
@@ -428,7 +458,9 @@ class Payment:
         logger.info(f"Checking status for purchase with ID: {purchase_id}")
         
         try:
-            async with aiohttp.ClientSession() as session:
+            # Create connector with SSL configuration from config
+            connector = aiohttp.TCPConnector(ssl=self.config.verify_ssl)
+            async with aiohttp.ClientSession(connector=connector) as session:
                 async with session.get(
                     f"{self.config.payment_service_url}/purchase/{purchase_id}",
                     headers=self._headers
@@ -469,7 +501,9 @@ class Payment:
         logger.debug(f"Authorize refund payload: {payload}")
         
         try:
-            async with aiohttp.ClientSession() as session:
+            # Create connector with SSL configuration from config
+            connector = aiohttp.TCPConnector(ssl=self.config.verify_ssl)
+            async with aiohttp.ClientSession(connector=connector) as session:
                 async with session.post(
                     f"{self.config.payment_service_url}/payment/authorize-refund",
                     headers=self._headers,
