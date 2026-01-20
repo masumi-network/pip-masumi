@@ -34,8 +34,8 @@ def _get_process_job_template() -> str:
 def _get_requirements_txt() -> str:
     """Generate requirements.txt content."""
     requirements = [
-        "masumi>=0.1.41",
-        "python-dotenv>=0.19.0",
+        "masumi",
+        "python-dotenv",
     ]
     
     return "\n".join(requirements) + "\n"
@@ -148,7 +148,9 @@ A Masumi agent project generated with `masumi init`.
 3. **Run the agent:**
    ```bash
    # API mode (default) - runs as FastAPI server
-   masumi run main.py
+   # If no file is provided, defaults to main.py
+   masumi run                    # Runs main.py
+   masumi run main.py           # Or specify explicitly
    
    # Standalone mode - executes job directly
    masumi run main.py --standalone
@@ -199,7 +201,8 @@ A Masumi agent project generated with `masumi init`.
 3. Set environment variables in your deployment environment
 4. Run the agent in API mode:
    ```bash
-   masumi run main.py
+   masumi run                    # Runs main.py by default
+   masumi run main.py           # Or specify explicitly
    ```
 
 ## Documentation

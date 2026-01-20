@@ -251,11 +251,13 @@ def run_command(args):
         print("=" * 70)
         print("\nRun an agent file (API mode by default)")
         print("\nUsage:")
-        print("  masumi run <file.py> [OPTIONS]")
+        print("  masumi run [file.py] [OPTIONS]")
         print("\nOptions:")
         print("  --standalone           Run in standalone mode (execute job directly)")
         print("  --input 'JSON'         Input data for standalone mode (JSON string)")
         print("  --help, -h             Show this help message")
+        print("\nNote:")
+        print("  If no file is provided, defaults to main.py")
         print("\nExecution Modes:")
         print("  API mode (default):")
         print("    Runs as FastAPI server with Masumi payment integration")
@@ -265,6 +267,7 @@ def run_command(args):
         print("    Executes the agent function directly without API server")
         print("    Useful for local testing and development")
         print("\nExamples:")
+        print("  masumi run                    # Runs main.py")
         print("  masumi run agent.py")
         print("  masumi run agent.py --standalone")
         print("  masumi run agent.py --standalone --input '{\"text\": \"Hello\"}'")
@@ -275,12 +278,17 @@ def run_command(args):
     # Load .env file if available (optional dependency)
     _load_dotenv_if_available()
     
-    if len(args) < 1:
-        print("Error: Please provide a Python file to run")
-        print("Usage: masumi run <file.py> [--standalone] [--input 'JSON']")
-        sys.exit(1)
+    # Default to main.py if no file is provided
+    # Filter out flags to find the file argument
+    file_path = None
+    for arg in args:
+        if not arg.startswith("--") and not arg.startswith("-"):
+            file_path = arg
+            break
     
-    file_path = args[0]
+    if file_path is None:
+        file_path = "main.py"
+    
     if not os.path.exists(file_path):
         print(f"Error: File not found: {file_path}")
         sys.exit(1)
@@ -459,11 +467,14 @@ def show_help():
     print("\n  run")
     print("    Run an agent file (API mode by default)")
     print("\n    Usage:")
-    print("      masumi run <file.py> [OPTIONS]")
+    print("      masumi run [file.py] [OPTIONS]")
     print("\n    Options:")
     print("      --standalone           Run in standalone mode (execute job directly)")
     print("      --input 'JSON'         Input data for standalone mode (JSON string)")
+    print("\n    Note:")
+    print("      If no file is provided, defaults to main.py")
     print("\n    Examples:")
+    print("      masumi run                    # Runs main.py")
     print("      masumi run agent.py")
     print("      masumi run agent.py --standalone")
     print("      masumi run agent.py --standalone --input '{\"text\": \"Hello\"}'")
@@ -532,11 +543,11 @@ def main():
         print("Masumi Agent Builder CLI")
         print("\nUsage:")
         print("  masumi init [--name NAME] [--dir DIR]")
-        print("  masumi run <file.py> [--standalone] [--input 'JSON']")
+        print("  masumi run [file.py] [--standalone] [--input 'JSON']")
         print("  masumi check")
         print("\nCommands:")
         print("  init      Generate a new Masumi agent project with full structure")
-        print("  run       Run an agent file (API mode by default, use --standalone for direct execution)")
+        print("  run       Run an agent file (defaults to main.py, API mode by default, use --standalone for direct execution)")
         print("  check     Validate your environment and configuration")
         print("\nUse 'masumi --help' for detailed information and all options.")
         sys.exit(1)

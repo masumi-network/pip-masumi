@@ -77,7 +77,9 @@ masumi check  # Checks Python version, packages, environment variables, etc.
 **5. Run your agent:**
 ```bash
 # API mode (default) - runs as FastAPI server
-masumi run agent.py
+# If no file is provided, defaults to main.py
+masumi run                    # Runs main.py
+masumi run agent.py           # Or specify a file
 
 # Standalone mode - executes job directly without API
 masumi run agent.py --standalone --input '{"text": "Hello"}'
@@ -501,7 +503,9 @@ Run an agent file:
 
 ```bash
 # API mode (default) - runs as FastAPI server
-masumi run agent.py
+# If no file is provided, defaults to main.py
+masumi run                    # Runs main.py
+masumi run agent.py          # Or specify a file
 
 # Standalone mode - executes job directly without API
 masumi run agent.py --standalone

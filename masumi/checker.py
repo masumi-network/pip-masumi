@@ -359,7 +359,7 @@ class MasumiChecker:
         # Summary
         print("\n" + "=" * 50)
         if self.errors == 0 and self.warnings == 0:
-            print("🎉 Ready! Run: masumi run agent.py")
+            print("🎉 Ready! Run: masumi run (defaults to main.py)")
         elif self.errors == 0:
             print(f"✅ Ready (with {self.warnings} warning(s))")
             if not self.verbose:

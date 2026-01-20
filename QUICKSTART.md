@@ -124,7 +124,9 @@ You can run your agent in two modes:
     **API Mode** (default) - Runs as a FastAPI server with Masumi payment integration:
     
     ```bash
-    masumi run agent.py
+    # If no file is provided, defaults to main.py
+    masumi run                    # Runs main.py
+    masumi run agent.py          # Or specify a file
     ```
     
     Or run directly with Python:
