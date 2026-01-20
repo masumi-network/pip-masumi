@@ -26,25 +26,16 @@ masumi init
 
 This will prompt you for:
 - Project name (default: `masumi-agent`)
-- Framework choice (none, langchain, crewai, autogen)
 - Output directory
 
 Or use non-interactive mode:
 
 ```bash
-masumi init --name my-agent --framework langchain
+masumi init --name my-agent
 ```
 
 <Callout type="tip">
   **Explore options:** Run `masumi init --help` or `masumi run --help` to see all available command options.
-</Callout>
-
-<Callout type="info">
-  **Framework Options:**
-  - `none` - Plain Python (default)
-  - `langchain` - LangChain for LLM orchestration
-  - `crewai` - CrewAI for multi-agent systems
-  - `autogen` - AutoGen for conversational AI agents
 </Callout>
 
 The `masumi init` command will generate the following project structure:

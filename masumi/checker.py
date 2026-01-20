@@ -38,40 +38,6 @@ class MasumiChecker:
             elif result.level == "warning":
                 self.warnings += 1
 
-    def check_python_version(self) -> List[CheckResult]:
-        """Check if Python version is >= 3.8 and compatible with frameworks."""
-        version_info = sys.version_info
-        version_str = f"{version_info.major}.{version_info.minor}.{version_info.micro}"
-        results = []
-
-        # Check minimum version
-        if version_info.major < 3 or (version_info.major == 3 and version_info.minor < 8):
-            results.append(CheckResult(
-                passed=False,
-                message=f"Python {version_str} (too old)",
-                fix_hint="Masumi requires Python 3.8+",
-                level="error"
-            ))
-            return results
-
-        # Check framework compatibility (most AI frameworks need 3.10+)
-        # CrewAI, AutoGen: 3.10-3.13
-        # LangChain, LlamaIndex: 3.10+ (no upper limit)
-        if version_info.major == 3 and version_info.minor >= 14:
-            results.append(CheckResult(
-                passed=False,
-                message=f"Python {version_str} unsupported by most AI frameworks",
-                fix_hint="CrewAI, AutoGen max out at 3.13. Use Python 3.10-3.13",
-                level="warning"
-            ))
-        else:
-            results.append(CheckResult(
-                passed=True,
-                message=f"Python {version_str}",
-                level="info"
-            ))
-
-        return results
 
     def check_virtual_environment(self) -> CheckResult:
         """Check if running in a virtual environment."""
@@ -304,62 +270,6 @@ class MasumiChecker:
                 level="error"
             )
 
-    def check_framework_compatibility(self) -> List[CheckResult]:
-        """Check if installed AI frameworks are compatible with Python version."""
-        version_info = sys.version_info
-        results = []
-
-        # Framework compatibility data: (package_name, display_name, min_version, max_version)
-        # Source: PyPI as of Jan 2025
-        frameworks = [
-            ("crewai", "CrewAI", 10, 13),        # >=3.10, <3.14
-            ("langchain", "LangChain", 10, 99),  # >=3.10, <4.0
-            ("autogen", "AutoGen", 10, 13),      # >=3.10, <3.14 (AG2)
-            ("pyautogen", "AutoGen", 10, 13),    # Alternative package name
-            ("llama_index", "LlamaIndex", 9, 99),# >=3.9, <4.0
-        ]
-
-        installed_frameworks = {}  # Display name -> (min, max)
-        incompatible_frameworks = []
-
-        for package_name, display_name, min_minor, max_minor in frameworks:
-            try:
-                spec = importlib.util.find_spec(package_name)
-                if spec is not None:
-                    # Avoid duplicates (autogen vs pyautogen)
-                    if display_name not in installed_frameworks:
-                        installed_frameworks[display_name] = (min_minor, max_minor)
-
-                        # Check compatibility
-                        current_minor = version_info.minor
-                        if version_info.major == 3:
-                            if current_minor < min_minor:
-                                incompatible_frameworks.append(
-                                    f"{display_name} (requires 3.{min_minor}+)"
-                                )
-                            elif current_minor > max_minor:
-                                incompatible_frameworks.append(
-                                    f"{display_name} (max 3.{max_minor})"
-                                )
-            except (ImportError, ValueError):
-                pass
-
-        if installed_frameworks:
-            results.append(CheckResult(
-                passed=True,
-                message=f"Frameworks: {', '.join(installed_frameworks.keys())}",
-                level="info"
-            ))
-
-            if incompatible_frameworks:
-                results.append(CheckResult(
-                    passed=False,
-                    message=f"Incompatible: {', '.join(incompatible_frameworks)}",
-                    fix_hint="Use Python 3.10-3.13 for best compatibility",
-                    level="warning"
-                ))
-
-        return results
 
     async def run_all_checks(self, verbose: bool = False) -> bool:
         """Run all checks and return True if all critical checks pass."""
@@ -369,9 +279,7 @@ class MasumiChecker:
         print("🔍 Masumi Environment Check")
         print("=" * 50 + "\n")
 
-        # Python version (returns list now)
-        for result in self.check_python_version():
-            self.add_result(result)
+
 
         # Virtual environment
         result = self.check_virtual_environment()
@@ -380,10 +288,6 @@ class MasumiChecker:
         # Masumi installation
         result = self.check_masumi_installation()
         self.add_result(result)
-
-        # Framework compatibility check
-        for result in self.check_framework_compatibility():
-            self.add_result(result)
 
         # Required packages
         result = self.check_required_packages()

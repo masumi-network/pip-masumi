@@ -4,117 +4,13 @@ Templates for generating Masumi agent projects with full project structure.
 
 import os
 import time
-from typing import Optional, List, Dict, Tuple
+from typing import Optional, List, Dict
 from pathlib import Path
 
 
-# Framework templates
-LANGCHAIN_TEMPLATE = '''from langchain.llms import OpenAI
-from langchain.chains import LLMChain
-from langchain.prompts import PromptTemplate
-
-# Framework setup
-llm = OpenAI(temperature=0.7)
-
-# Example prompt template
-prompt = PromptTemplate(
-    input_variables=["text"],
-    template="Process the following text: {text}"
-)
-
-chain = LLMChain(llm=llm, prompt=prompt)
-'''
-
-CREWAI_TEMPLATE = '''from crewai import Agent, Task, Crew
-
-# Framework setup - define your agents and tasks here
-# Example:
-# agent = Agent(
-#     role='Agent Role',
-#     goal='Agent Goal',
-#     backstory='Agent backstory'
-# )
-'''
-
-AUTOGEN_TEMPLATE = '''from autogen import ConversableAgent
-
-# Framework setup - define your agents here
-# Example:
-# agent = ConversableAgent(
-#     name="agent",
-#     system_message="You are a helpful assistant.",
-#     llm_config={"config_list": [{"model": "gpt-4", "api_key": os.getenv("OPENAI_API_KEY")}]}
-# )
-'''
-
-
-def _get_framework_template(framework: Optional[str]) -> Tuple[str, str, str]:
-    """Get framework template, imports, and setup code separately."""
-    if framework == "langchain":
-        imports = "from langchain.llms import OpenAI\nfrom langchain.chains import LLMChain\nfrom langchain.prompts import PromptTemplate"
-        setup = """# Framework setup
-llm = OpenAI(temperature=0.7)
-
-# Example prompt template
-prompt = PromptTemplate(
-    input_variables=["text"],
-    template="Process the following text: {text}"
-)
-
-chain = LLMChain(llm=llm, prompt=prompt)"""
-        return LANGCHAIN_TEMPLATE, imports, setup
-    elif framework == "crewai":
-        imports = "from crewai import Agent, Task, Crew"
-        setup = """# Framework setup - define your agents and tasks here
-# Example:
-# agent = Agent(
-#     role='Agent Role',
-#     goal='Agent Goal',
-#     backstory='Agent backstory'
-# )"""
-        return CREWAI_TEMPLATE, imports, setup
-    elif framework == "autogen":
-        imports = "from autogen import ConversableAgent"
-        setup = """# Framework setup - define your agents here
-# Example:
-# agent = ConversableAgent(
-#     name="agent",
-#     system_message="You are a helpful assistant.",
-#     llm_config={"config_list": [{"model": "gpt-4", "api_key": os.getenv("OPENAI_API_KEY")}]}
-# )"""
-        return AUTOGEN_TEMPLATE, imports, setup
-    else:
-        return "", "", ""
-
-
-def _get_process_job_template(framework: Optional[str]) -> str:
-    """Get process_job function template with framework integration."""
-    framework_code = ""
-    
-    if framework == "langchain":
-        framework_code = """    # Example: Use LangChain
-    text = input_data.get("text", "")
-    result = chain.run(text=text)
-"""
-    elif framework == "crewai":
-        framework_code = """    # Example: Use CrewAI
-    # task = Task(description=f"Process: {input_data}", agent=agent)
-    # crew = Crew(agents=[agent], tasks=[task])
-    # result = crew.kickoff()
-    result = {"status": "processed", "data": input_data}
-"""
-    elif framework == "autogen":
-        framework_code = """    # Example: Use AutoGen
-    # result = agent.generate_reply(messages=[{"role": "user", "content": str(input_data)}])
-    result = {"status": "processed", "data": input_data}
-"""
-    else:
-        framework_code = """    # Process input
-    text = input_data.get("text", "")
-    result = f"Processed: {text}"
-"""
-    
-    return f"""async def process_job(identifier_from_purchaser: str, input_data: dict):
+def _get_process_job_template() -> str:
+    """Get process_job function template."""
+    return """async def process_job(identifier_from_purchaser: str, input_data: dict):
     \"\"\"
     Process a job - implement your agentic behavior here
     
@@ -125,28 +21,27 @@ def _get_process_job_template(framework: Optional[str]) -> str:
     Returns:
         Result of processing
     \"\"\"
-{framework_code}
-    return {{"result": result, "purchaser": identifier_from_purchaser}}
+    # Process input
+    text = input_data.get("text", "")
+    result = f"Processed: {text}"
+    
+    return {"result": result, "purchaser": identifier_from_purchaser}
 """
 
 
 
 
-def _get_requirements_txt(framework: Optional[str]) -> str:
+def _get_requirements_txt() -> str:
     """Generate requirements.txt content."""
     requirements = [
         "masumi>=0.1.41",
         "python-dotenv>=0.19.0",
     ]
     
-    # Framework dependencies
-    if framework:
-        requirements.append(f"{framework}>=0.1.0")
-    
     return "\n".join(requirements) + "\n"
 
 
-def _get_env_template(database: Optional[str], framework: Optional[str], additional_libs: List[str]) -> str:
+def _get_env_template(database: Optional[str], additional_libs: List[str]) -> str:
     """Generate .env file template matching the root .env.example format."""
     env_lines = [
         "# Masumi Agent Configuration",
@@ -219,16 +114,6 @@ def _get_env_template(database: Optional[str], framework: Optional[str], additio
             "",
         ])
     
-    # Framework/API keys
-    if framework == "langchain":
-        env_lines.extend([
-            "# ============================================",
-            "# API KEYS: OpenAI",
-            "# ============================================",
-            "OPENAI_API_KEY=your_openai_api_key_here",
-            "",
-        ])
-    
     if "anthropic" in additional_libs:
         env_lines.extend([
             "# ============================================",
@@ -241,7 +126,7 @@ def _get_env_template(database: Optional[str], framework: Optional[str], additio
     return "\n".join(env_lines)
 
 
-def _get_readme_template(project_name: str, framework: Optional[str]) -> str:
+def _get_readme_template(project_name: str) -> str:
     """Generate README.md content."""
     readme = f"""# {project_name}
 
@@ -282,13 +167,6 @@ A Masumi agent project generated with `masumi init`.
 - `PAYMENT_SERVICE_URL`: Payment service URL (defaults to production)
 - `NETWORK`: Network to use - 'Preprod' or 'Mainnet' (defaults to 'Preprod')
 - `PORT`: Port to bind to (defaults to 8080)
-"""
-    
-    if framework:
-        readme += f"""
-### Framework
-
-This project uses **{framework.capitalize()}** for agent orchestration.
 """
     
     readme += """
@@ -395,7 +273,6 @@ Thumbs.db
 def scaffold(
     project_name: Optional[str] = None,
     output_dir: Optional[str] = None,
-    framework: Optional[str] = None,
     interactive: bool = True
 ) -> None:
     """
@@ -404,7 +281,6 @@ def scaffold(
     Args:
         project_name: Name of the project (default: "masumi-agent")
         output_dir: Output directory (default: project_name)
-        framework: Framework choice ("langchain", "crewai", "autogen", or None)
         interactive: If True, prompt user for choices
     """
     
@@ -425,39 +301,6 @@ def scaffold(
         # Set output directory to project name automatically
         if output_dir is None:
             output_dir = project_name
-        
-        # Select framework
-        if framework is None:
-            framework = select_option(
-                "🔧 Select a framework",
-                [
-                    {
-                        "key": "1",
-                        "label": "None",
-                        "description": "Plain Python (default)",
-                        "value": None
-                    },
-                    {
-                        "key": "2",
-                        "label": "LangChain",
-                        "description": "LLM orchestration and chaining",
-                        "value": "langchain"
-                    },
-                    {
-                        "key": "3",
-                        "label": "CrewAI",
-                        "description": "Multi-agent framework for collaborative AI",
-                        "value": "crewai"
-                    },
-                    {
-                        "key": "4",
-                        "label": "AutoGen",
-                        "description": "Conversational AI agents framework",
-                        "value": "autogen"
-                    }
-                ],
-                default=0
-            )
         
         print()  # Add spacing
     
@@ -484,28 +327,14 @@ def scaffold(
     project_path.mkdir(parents=True, exist_ok=True)
     
     # Generate templates
-    _, fw_imports, fw_setup = _get_framework_template(framework)
-    process_job_code = _get_process_job_template(framework)
+    process_job_code = _get_process_job_template()
     
-    # Build imports section (collect all unique imports)
-    imports_set = set()
-    imports_set.add("import os")
-    imports_set.add("from masumi import run, Config")
-    imports_set.add("import logging")
-    
-    # Add framework imports
-    if fw_imports:
-        for imp in fw_imports.split('\n'):
-            if imp.strip():
-                imports_set.add(imp.strip())
-    
-    # Convert to sorted list (standard library first, then third-party)
-    imports_list = sorted(imports_set, key=lambda x: (not x.startswith('import '), x))
-    
-    # Build header comment
-    header_parts = [f"{project_name} - Masumi Agent", "Generated by masumi init"]
-    if framework:
-        header_parts.append(f"Framework: {framework.capitalize()}")
+    # Build imports section
+    imports_list = [
+        "import os",
+        "from masumi import run, Config",
+        "import logging",
+    ]
     
     # Build agent.py template (agent logic)
     agent_template_parts = [
@@ -526,21 +355,10 @@ def scaffold(
         ")",
         "logger = logging.getLogger(__name__)",
         "",
-    ]
-    
-    # Add framework setup
-    if fw_setup:
-        agent_template_parts.extend([
-            fw_setup,
-            "",
-        ])
-    
-    # Add process_job function
-    agent_template_parts.extend([
         "# Define agent logic",
         process_job_code,
         ""
-    ])
+    ]
     agent_template = "\n".join(agent_template_parts)
     
     # Build main.py template (entry point)
@@ -614,15 +432,15 @@ def scaffold(
                 from .interactive_cli import print_success
                 print_success(success_msg)
             elif i == 3:
-                (project_path / "requirements.txt").write_text(_get_requirements_txt(framework))
+                (project_path / "requirements.txt").write_text(_get_requirements_txt())
                 from .interactive_cli import print_success
                 print_success(success_msg)
             elif i == 4:
-                (project_path / ".env.example").write_text(_get_env_template(None, framework, []))
+                (project_path / ".env.example").write_text(_get_env_template(None, []))
                 from .interactive_cli import print_success
                 print_success(success_msg)
             elif i == 5:
-                (project_path / "README.md").write_text(_get_readme_template(project_name, framework))
+                (project_path / "README.md").write_text(_get_readme_template(project_name))
                 from .interactive_cli import print_success
                 print_success(success_msg)
             elif i == 6:
@@ -634,9 +452,9 @@ def scaffold(
         # Non-interactive mode - just write files
         (project_path / "agent.py").write_text(agent_template)
         (project_path / "main.py").write_text(main_template)
-        (project_path / "requirements.txt").write_text(_get_requirements_txt(framework))
-        (project_path / ".env.example").write_text(_get_env_template(None, framework, []))
-        (project_path / "README.md").write_text(_get_readme_template(project_name, framework))
+        (project_path / "requirements.txt").write_text(_get_requirements_txt())
+        (project_path / ".env.example").write_text(_get_env_template(None, []))
+        (project_path / "README.md").write_text(_get_readme_template(project_name))
         (project_path / ".gitignore").write_text(_get_gitignore_template())
 
     # Show completion message

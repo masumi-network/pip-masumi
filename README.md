@@ -358,21 +358,15 @@ The Masumi package includes a CLI for initializing and running agents:
 
 ### Init Command
 
-Generate a new agent project with framework integration:
+Generate a new agent project:
 
 ```bash
 # Interactive init (prompts for options)
 masumi init
 
 # Non-interactive init with options
-masumi init --name my-agent --framework langchain
+masumi init --name my-agent
 ```
-
-**Supported frameworks:**
-- `langchain` - LangChain (LLM orchestration)
-- `crewai` - CrewAI (multi-agent framework)
-- `autogen` - AutoGen (conversational AI agents)
-- `none` - Plain Python (default)
 
 **Adding a Database:**
 
@@ -560,7 +554,7 @@ The Masumi protocol uses time-based controls for secure transactions:
 
 ## Requirements
 
-- **Python 3.10-3.13** (recommended for AI frameworks)
+- **Python 3.10-3.13**
 - aiohttp
 - canonicaljson
 - fastapi

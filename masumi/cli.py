@@ -359,24 +359,17 @@ def init_command(args):
         print("\nOptions:")
         print("  --name NAME            Project name (default: masumi-agent)")
         print("  --dir DIRECTORY        Output directory (default: project name)")
-        print("  --framework FW         Framework choice (see options below)")
         print("  --non-interactive      Skip interactive prompts")
         print("  --help, -h             Show this help message")
-        print("\nFramework Options:")
-        print("  none      Plain Python (default)")
-        print("  langchain LangChain - LLM orchestration")
-        print("  crewai    CrewAI - multi-agent framework")
-        print("  autogen   AutoGen - conversational AI agents")
         print("\nExamples:")
         print("  masumi init")
-        print("  masumi init --name my-agent --framework langchain")
+        print("  masumi init --name my-agent")
         print("  masumi init --dir my-project --non-interactive")
         sys.exit(0)
     
     # Parse arguments
     project_name = None
     output_dir = None
-    framework = None
     interactive = True
     
     i = 0
@@ -387,9 +380,6 @@ def init_command(args):
         elif args[i] in ["--dir", "--output-dir", "--directory"] and i + 1 < len(args):
             output_dir = args[i + 1]
             i += 2
-        elif args[i] == "--framework" and i + 1 < len(args):
-            framework = args[i + 1]
-            i += 2
         elif args[i] == "--non-interactive":
             interactive = False
             i += 1
@@ -399,7 +389,6 @@ def init_command(args):
     scaffold(
         project_name=project_name,
         output_dir=output_dir,
-        framework=framework,
         interactive=interactive
     )
 
@@ -417,7 +406,6 @@ def check_command(args):
         print("  --verbose, -v          Show all checks (including passed)")
         print("\nThis command checks:")
         print("  - Python version (>= 3.8)")
-        print("  - Framework compatibility (CrewAI, LangChain, AutoGen)")
         print("  - Virtual environment status")
         print("  - Required package installation")
         print("  - .env file existence")
@@ -451,7 +439,7 @@ def show_help():
     print("Masumi Agent Builder CLI")
     print("=" * 70)
     print("\nA command-line tool for building and running Masumi agents with")
-    print("integrated payment processing and framework support.")
+    print("integrated payment processing.")
     print("\n" + "=" * 70)
     print("\nCOMMANDS")
     print("-" * 70)
@@ -463,11 +451,10 @@ def show_help():
     print("\n    Options:")
     print("      --name NAME            Project name (default: masumi-agent)")
     print("      --dir DIRECTORY        Output directory (default: project name)")
-    print("      --framework FW         Framework choice (see options below)")
     print("      --non-interactive      Skip interactive prompts")
     print("\n    Examples:")
     print("      masumi init")
-    print("      masumi init --name my-agent --framework langchain")
+    print("      masumi init --name my-agent")
 
     print("\n  run")
     print("    Run an agent file (API mode by default)")
@@ -489,7 +476,6 @@ def show_help():
     print("      --verbose, -v          Show all checks (including passed)")
     print("\n    Checks:")
     print("      - Python version (>= 3.8)")
-    print("      - Framework compatibility (CrewAI, LangChain, AutoGen, LlamaIndex)")
     print("      - Virtual environment status")
     print("      - Required packages installation")
     print("      - Environment variables (AGENT_IDENTIFIER, PAYMENT_API_KEY, etc.)")
@@ -498,16 +484,6 @@ def show_help():
     print("      masumi check                    # Quick check (only shows issues)")
     print("      masumi check --verbose          # Detailed check (shows everything)")
 
-    print("\n" + "=" * 70)
-    print("\nINIT OPTIONS")
-    print("-" * 70)
-    
-    print("\n  Frameworks:")
-    print("    none      Plain Python (default)")
-    print("    langchain LangChain - LLM orchestration")
-    print("    crewai    CrewAI - multi-agent framework")
-    print("    autogen   AutoGen - conversational AI agents")
-    
     print("\n" + "=" * 70)
     print("\nENVIRONMENT VARIABLES")
     print("-" * 70)
@@ -526,7 +502,7 @@ def show_help():
     print("\nQUICK START")
     print("-" * 70)
     print("\n  1. Generate a new agent project:")
-    print("     masumi init --name my-agent --framework langchain")
+    print("     masumi init --name my-agent")
     print("\n  2. Set up the project:")
     print("     cd my-agent")
     print("     pip install -r requirements.txt")
@@ -555,7 +531,7 @@ def main():
     if len(sys.argv) < 2:
         print("Masumi Agent Builder CLI")
         print("\nUsage:")
-        print("  masumi init [--name NAME] [--dir DIR] [--framework FW]")
+        print("  masumi init [--name NAME] [--dir DIR]")
         print("  masumi run <file.py> [--standalone] [--input 'JSON']")
         print("  masumi check")
         print("\nCommands:")
