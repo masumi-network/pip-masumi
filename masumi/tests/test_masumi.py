@@ -1,7 +1,6 @@
 import os
 import logging
 import sys
-from datetime import datetime
 
 # Force logging to stdout
 for handler in logging.root.handlers[:]:
@@ -22,8 +21,7 @@ logging.getLogger().addHandler(logging.StreamHandler(sys.stdout))
 
 import pytest
 import asyncio
-from masumi.registry import Agent
-from masumi.payment import Payment, Amount
+from masumi.payment import Payment
 from masumi.config import Config
 from masumi.purchase import Purchase
 
@@ -40,186 +38,67 @@ def print_test_separator(test_name: str):
 DELAY_AFTER_REGISTRATION = 30  # seconds
 DELAY_AFTER_PAYMENT_CREATE = 30  # seconds
 
-def generate_unique_agent_name() -> str:
-    """Generate a unique agent name under 32 characters"""
-    timestamp = datetime.now().strftime("%m%d%H%M")
-    base_name = "Test_Agent"
-    return f"{base_name}_{timestamp}"  # e.g. "Test_Agent_0221143022"
+# Agent registration is now done via admin interface
+# Tests use agent_id from environment variable TEST_AGENT_ID
 
-# At the module level, add a variable to store the agent name
-_agent_name = None
+# Agent registration is now done via admin interface, not programmatically
+# Tests that require agent registration have been removed/skipped
 
 @pytest.fixture
-async def test_agent():
-    """Create a test agent for use in tests"""
-    global _agent_name
-    logger.info("Creating test agent fixture")
+def test_config():
+    """Create a test config for use in tests"""
+    logger.info("Creating test config fixture")
     
-    # Generate a unique agent name only once
-    if _agent_name is None:
-        _agent_name = generate_unique_agent_name()
-        logger.info(f"Generated agent name: {_agent_name}")
-    else:
-        logger.info(f"Using existing agent name: {_agent_name}")
-    
-    # Create config and log the values
-    config = Config(
-        payment_service_url="https://payment.masumi.network/api/v1",
-        payment_api_key="iofsnaiojdoiewqajdriknjonasfoinasd",
-        registry_service_url="http://localhost:3001/api/v1",
-        registry_api_key="abcdef_this_should_be_very_secure"
-    )
-    
-    # Log the URLs and API keys being used
-    logger.info("=== Configuration Details ===")
-    logger.info(f"Registry Service URL: {config.registry_service_url}")
-    logger.info(f"Registry API Key: {config.registry_api_key}")
-    logger.info(f"Payment Service URL: {config.payment_service_url}")
-    logger.info(f"Payment API Key: {config.payment_api_key}")
-    logger.info("==========================")
-    
-    agent = Agent(
-        name=_agent_name,
-        config=config,
-        description="Test agent for automated testing",
-        example_output=[
-            {
-                "name": "example_output_name",
-                "url": "https://example.com/example_output",
-                "mimeType": "application/json"
-            }
-        ],
-        tags=["test", "automated"],
-        api_base_url="http://example.com/api",
-        author_name="Test Author",
-        author_contact="test@example.com",
-        author_organization="Test Organization",
-        legal_privacy_policy="",
-        legal_terms="http://example.com/terms",
-        legal_other="http://example.com/other",
-        capability_name="test_capability",
-        capability_version="1.0.0",
-        pricing_unit="lovelace",
-        pricing_quantity="10000000",
-        network="Preprod"
-    )
-    
-    logger.debug(f"Test agent fixture created with name: {agent.name}")
-    return agent
-
-@pytest.mark.asyncio
-async def test_register_agent(test_agent):
-    """Test agent registration - should be run first to get agent ID"""
-    agent = await test_agent  # Await the fixture
-    print_test_separator("Agent Registration Test")
-    
-    logger.info("Starting agent registration process")
-    logger.debug("Fetching selling wallet vkey before registration")
-    result = await agent.register()  # Use the awaited agent
-    
-    logger.info("Verifying registration response")
-    logger.debug(f"Full registration response: {result}")
-    
-    # Verify the response
-    assert "data" in result, "Response missing 'data' field"
-    assert "name" in result["data"], "Response data missing 'name' field"
-    assert "success" in result["status"], "Response missing 'success' status"
-        
-    logger.info(f"Registration successful for agent: {result['data']['name']}")
-    logger.debug(f"Registration status: {result['status']}")
-    
-    logger.info(f"Waiting {DELAY_AFTER_REGISTRATION} seconds before next test...")
-    await asyncio.sleep(DELAY_AFTER_REGISTRATION)
-    
-    logger.info("Agent registration test completed successfully")
-
-@pytest.mark.asyncio
-async def test_check_registration_status(test_agent):
-    """Test checking registration status - should be run after registration"""
-    agent = await test_agent
-    print_test_separator("Registration Status Check Test")
-    
-    MAX_RETRIES = 10
-    RETRY_DELAY = 60  # seconds
-    
-    # Get the wallet vkey
-    logger.info("Fetching selling wallet vkey")
-    wallet_vkey = await agent.get_selling_wallet_vkey("Preprod")
-    logger.debug(f"Retrieved wallet vkey: {wallet_vkey}")
-    
-    for attempt in range(MAX_RETRIES):
-        logger.info(f"Checking registration status (attempt {attempt + 1}/{MAX_RETRIES})")
-        result = await agent.check_registration_status(wallet_vkey)
-        
-        try:
-            # Verify the response
-            assert "status" in result, "Response missing 'status' field"
-            assert result["status"] == "success", "Status is not 'success'"
-            assert "data" in result, "Response missing 'data' field"
-            assert "Assets" in result["data"], "Response data missing 'Assets' field"
-            
-            # Verify our agent exists in the list
-            agent_found = False
-            for asset in result["data"]["Assets"]:
-                if asset["name"] == agent.name and asset["state"] == "RegistrationConfirmed":
-                    agent_found = True
-                        # Store the agent ID for future tests
-                    if "agentIdentifier" in asset:
-                        test_register_agent.agent_id = asset["agentIdentifier"]
-                        logger.info(f"Stored agent ID for future tests: {test_register_agent.agent_id}")
-                    else:
-                        logger.warning("Agent ID not found in registration response, future tests will use fallback ID")
-                    break
-            
-            if agent_found:
-
-                logger.info(f"Waiting {DELAY_AFTER_REGISTRATION} seconds before next test...")
-                await asyncio.sleep(DELAY_AFTER_REGISTRATION)
-
-                logger.info("Registration status check completed successfully")
-                return  # Exit the function if agent is found
-            
-            logger.warning(f"Agent {agent.name} not found in registration status")
-            
-        except AssertionError as e:
-            logger.error(f"Assertion failed: {str(e)}")
-        
-        if attempt < MAX_RETRIES - 1:  # Don't sleep after the last attempt
-            logger.info(f"Waiting {RETRY_DELAY} seconds before next attempt...")
-            await asyncio.sleep(RETRY_DELAY)
-    
-    # If we get here, all retries failed
-    raise AssertionError(f"Agent {agent.name} not found in registration status after {MAX_RETRIES} attempts")
-
-# At the module level, add a variable to store the purchaser ID
-_purchaser_id = None
-
-@pytest.fixture
-def payment():
-    global _purchaser_id
-    logger.info("Creating payment fixture")
-    
-    # Create config and log the values
     config = Config(
         payment_service_url="https://payment.masumi.network/api/v1",
         payment_api_key="iofsnaiojdoiewqajdriknjonasfoinasd"
     )
     
-    # Log the configuration details
-    logger.info("=== Payment Configuration Details ===")
+    logger.info("=== Configuration Details ===")
     logger.info(f"Payment Service URL: {config.payment_service_url}")
     logger.info(f"Payment API Key: {config.payment_api_key}")
-    logger.info("==================================")
+    logger.info("==========================")
     
-    amounts = [Amount(amount="10000000", unit="lovelace")]
+    return config
+
+# For backwards compatibility with existing tests, provide a test_agent fixture
+# that returns config and agent_id (agents are now registered via admin interface)
+@pytest.fixture
+def test_agent(test_config):
+    """Create a mock test agent for use in tests (for backwards compatibility)"""
+    # Use environment variable or hardcoded test agent_id
+    # In real usage, agent_id comes from admin interface
+    agent_id = os.getenv("TEST_AGENT_ID", "test-agent-id-from-admin")
     
-    # Get agent ID from registration test - fail if not available
-    try:
-        agent_id = test_register_agent.agent_id
-        logger.info(f"Using agent ID from registration: {agent_id}")
-    except (AttributeError, NameError):
-        logger.error("Agent ID not found - registration test must be run first")
-        raise RuntimeError("Registration test must be run before payment tests")
+    class MockAgent:
+        def __init__(self, config, agent_id):
+            self.config = config
+            self.agent_id = agent_id
+            self.network = "Preprod"
+    
+    agent = MockAgent(test_config, agent_id)
+    logger.debug(f"Test agent fixture created with agent_id: {agent.agent_id}")
+    return agent
+
+# Agent registration tests removed - agents are now registered via admin interface
+# Use TEST_AGENT_ID environment variable to provide agent_id for other tests
+
+# At the module level, add a variable to store the purchaser ID
+_purchaser_id = None
+
+@pytest.fixture
+def payment(test_agent):
+    """Create a payment fixture for use in tests"""
+    global _purchaser_id
+    logger.info("Creating payment fixture")
+    
+    # Use config from test_agent fixture
+    config = test_agent.config
+    
+    # Get agent ID from test_agent fixture (agents are now registered via admin interface)
+    agent_id = test_agent.agent_id
+    
+    logger.info(f"Using agent ID: {agent_id}")
     
     # Create unique identifier for this purchaser using valid hex string
     if _purchaser_id is None:
@@ -301,12 +180,12 @@ async def test_check_existing_payment_status(payment):
     
     # Find our payment in the list
     payment_found = False
-    for payment_status in status_result["data"]["Payments"]:
-        if payment_status["blockchainIdentifier"] == payment_id:
+    for p_info in status_result["data"]["Payments"]:
+        if p_info["blockchainIdentifier"] == payment_id:
             payment_found = True
-            logger.info(f"Found payment status: {payment_status['NextAction']['requestedAction']}")
+            logger.info(f"Found payment status: {p_info['NextAction']['requestedAction']}")
             # Verify it has the expected fields
-            assert "requestedAction" in payment_status["NextAction"]
+            assert "requestedAction" in p_info["NextAction"]
             break
     
     assert payment_found, f"Payment with ID {payment_id} not found in status response"
@@ -317,7 +196,7 @@ async def test_create_purchase_request(test_agent):
     global _purchaser_id
     """Test creating a purchase request"""
     print_test_separator("Purchase Request Test")
-    agent = await test_agent
+    agent = test_agent
     
     logger.info("Setting up purchase request")
     
@@ -350,9 +229,9 @@ async def test_create_purchase_request(test_agent):
         logger.info(f"Using pay_by_time from payment response: {pay_by_time}")
         logger.info(f"Submit result time: {submit_result_time}")
         
-        # Get the agent identifier from the registration test, not from the payment
-        agent_identifier = test_register_agent.agent_id
-        logger.info(f"Using agent ID from registration: {agent_identifier}")
+        # Get the agent identifier from test_agent fixture (agents registered via admin interface)
+        agent_identifier = agent.agent_id
+        logger.info(f"Using agent ID: {agent_identifier}")
         
         # Store the agent identifier for future tests
         test_create_purchase_request.agent_identifier = agent_identifier
@@ -361,8 +240,8 @@ async def test_create_purchase_request(test_agent):
         logger.error("Payment response not available - payment test may not have run")
         pytest.skip("Payment response not available, skipping test")
     
-    # Get the seller vkey
-    seller_vkey = await agent.get_selling_wallet_vkey(agent.network)
+    # Get the seller vkey (from admin interface or environment variable)
+    seller_vkey = os.getenv("TEST_SELLER_VKEY", "test-seller-vkey-from-admin")
     logger.debug(f"Using seller vkey: {seller_vkey}")
     
     # Create purchase amounts (not used in current implementation)
@@ -429,7 +308,6 @@ async def test_create_purchase_request(test_agent):
 async def test_check_purchase_status(test_agent, payment):
     """Test checking the status of a purchase request"""
     print_test_separator("Purchase Status Check Test")
-    agent = await test_agent
     
     logger.info("Starting purchase status check")
     
@@ -464,12 +342,12 @@ async def test_check_purchase_status(test_agent, payment):
             
             # Look for our payment in the list by blockchain ID
             payment_found = False
-            for payment_status in result["data"]["Payments"]:
-                if payment_status["blockchainIdentifier"] == blockchain_id:
+            for p_info in result["data"]["Payments"]:
+                if p_info["blockchainIdentifier"] == blockchain_id:
                     payment_found = True
                     
                     # Get the onChainState
-                    on_chain_state = payment_status.get("onChainState")
+                    on_chain_state = p_info.get("onChainState")
                     logger.info(f"Payment onChainState: {on_chain_state}")
                     
                     # Check specifically for FundsLocked state
@@ -491,7 +369,7 @@ async def test_check_purchase_status(test_agent, payment):
                 # On last attempt, if we still haven't found FundsLocked, fail the test
                 raise AssertionError(f"Payment never reached FundsLocked state after {MAX_RETRIES} attempts")
                 
-        except AssertionError as e:
+        except AssertionError:
             # Re-raise assertion errors immediately
             raise
         except Exception as e:
@@ -509,7 +387,6 @@ async def test_check_purchase_status(test_agent, payment):
 async def test_complete_payment(test_agent, payment):
     """Test completing a payment after purchase has been confirmed"""
     print_test_separator("Payment Completion Test")
-    agent = await test_agent
     
     logger.info("Starting payment completion test")
     
@@ -552,17 +429,17 @@ async def test_complete_payment(test_agent, payment):
         final_status = await payment.check_payment_status()
         
         # Look for our payment in the list
-        for payment_status in final_status["data"]["Payments"]:
-            if payment_status["blockchainIdentifier"] == blockchain_id:
+        for p_info in final_status["data"]["Payments"]:
+            if p_info["blockchainIdentifier"] == blockchain_id:
                 # Check the final status
-                if "onChainState" in payment_status:
-                    logger.info(f"Final onChainState: {payment_status['onChainState']}")
+                if "onChainState" in p_info:
+                    logger.info(f"Final onChainState: {p_info['onChainState']}")
                 
-                final_action = payment_status.get("NextAction", {}).get("requestedAction", "Unknown")
+                final_action = p_info.get("NextAction", {}).get("requestedAction", "Unknown")
                 logger.info(f"Final payment status: {final_action}")
                 
                 # The payment should be in a completed state
-                if final_action in ["PaymentComplete", "None"] or payment_status.get("onChainState") == "Complete":
+                if final_action in ["PaymentComplete", "None"] or p_info.get("onChainState") == "Complete":
                     logger.info("Payment has been successfully completed")
                 else:
                     logger.warning(f"Payment completion may still be processing. Current status: {final_action}")
@@ -577,10 +454,9 @@ async def test_complete_payment(test_agent, payment):
     logger.info("Payment completion test finished")
 
 @pytest.mark.asyncio
-async def test_monitor_payment_status(test_agent, payment):
+async def test_monitor_payment_status(payment: Payment):
     """Test monitoring the payment status after completion"""
     print_test_separator("Payment Status Monitoring Test")
-    agent = await test_agent
     
     logger.info("Starting payment status monitoring test")
     
@@ -628,13 +504,13 @@ async def test_monitor_payment_status(test_agent, payment):
                 
                 # Look for our payment in the list
                 payment_found = False
-                for payment_status in payments:
-                    if payment_status["blockchainIdentifier"] == blockchain_id:
+                for p_info in payments:
+                    if p_info["blockchainIdentifier"] == blockchain_id:
                         payment_found = True
                         
                         # Check the current status
-                        on_chain_state = payment_status.get("onChainState")
-                        current_status = payment_status.get("NextAction", {}).get("requestedAction", "Unknown")
+                        on_chain_state = p_info.get("onChainState")
+                        current_status = p_info.get("NextAction", {}).get("requestedAction", "Unknown")
                         
                         logger.info(f"Payment onChainState: {on_chain_state}")
                         logger.info(f"Current payment status: {current_status}")
@@ -695,7 +571,7 @@ async def test_refund_flow(payment, test_agent):
     print_test_separator("Refund Flow Test")
     logger.info("Starting refund flow test")
     
-    agent = await test_agent
+    agent = test_agent
     
     # Get the blockchain identifier from the previous payment test
     try:
@@ -749,7 +625,7 @@ async def test_refund_flow(payment, test_agent):
         config=agent.config,
         blockchain_identifier=blockchain_id,
         seller_vkey=seller_vkey,
-        agent_identifier=test_register_agent.agent_id,
+        agent_identifier=agent.agent_id,
         identifier_from_purchaser=_purchaser_id,  # Use the same purchaser ID
         pay_by_time=pay_by_time,
         submit_result_time=submit_result_time,
@@ -772,9 +648,9 @@ async def test_refund_flow(payment, test_agent):
         status_result = await payment.check_payment_status()
         payments = status_result.get("data", {}).get("Payments", [])
         
-        for payment_status in payments:
-            if payment_status["blockchainIdentifier"] == blockchain_id:
-                on_chain_state = payment_status.get("onChainState")
+        for p_info in payments:
+            if p_info["blockchainIdentifier"] == blockchain_id:
+                on_chain_state = p_info.get("onChainState")
                 logger.info(f"Payment onChainState: {on_chain_state}")
                 
                 if on_chain_state == "FundsLocked":
@@ -820,15 +696,15 @@ async def test_refund_flow(payment, test_agent):
     
     status_after_refund = await payment.check_payment_status()
     payment_found = False
-    for payment_status in status_after_refund.get("data", {}).get("Payments", []):
-        if payment_status["blockchainIdentifier"] == blockchain_id:
+    for p_info in status_after_refund.get("data", {}).get("Payments", []):
+        if p_info["blockchainIdentifier"] == blockchain_id:
             payment_found = True
             logger.info(f"Payment found in status check")
-            logger.info(f"OnChainState: {payment_status.get('onChainState')}")
-            logger.info(f"NextAction: {payment_status.get('NextAction', {}).get('requestedAction')}")
+            logger.info(f"OnChainState: {p_info.get('onChainState')}")
+            logger.info(f"NextAction: {p_info.get('NextAction', {}).get('requestedAction')}")
             
             # Check if refund is already in a specific state
-            if payment_status.get('NextAction', {}).get('requestedAction') == 'RefundRequested':
+            if p_info.get('NextAction', {}).get('requestedAction') == 'RefundRequested':
                 logger.info("Payment is in RefundRequested state")
             break
     
