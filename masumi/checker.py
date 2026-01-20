@@ -283,7 +283,6 @@ class MasumiChecker:
             return CheckResult(
                 passed=False,
                 message="Payment service unreachable",
-                fix_hint="Check internet connection",
                 level="warning"
             )
 
