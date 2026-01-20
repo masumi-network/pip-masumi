@@ -38,6 +38,9 @@ def create_masumi_output_hash(output_string: str, identifier_from_purchaser: str
 
     # Step 2.1: Escape special characters in the result string using JSON encoding
     escaped_output = json.dumps(output_string, ensure_ascii=False)[1:-1]
+    logger.info(f"Escaped Output for hashing: {escaped_output}")
 
     # Call the core hashing function with the processed data.
-    return _create_hash_from_payload(escaped_output, identifier_from_purchaser)
+    result_hash = _create_hash_from_payload(escaped_output, identifier_from_purchaser)
+    logger.info(f"Generated Output Hash: {result_hash}")
+    return result_hash
