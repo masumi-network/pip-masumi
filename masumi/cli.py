@@ -404,6 +404,48 @@ def init_command(args):
     )
 
 
+def check_command(args):
+    """Handle the 'check' command."""
+    # Check for help flag
+    if "--help" in args or "-h" in args:
+        print("Masumi Agent Builder CLI - Check Command")
+        print("=" * 70)
+        print("\nValidate your Masumi environment and configuration")
+        print("\nUsage:")
+        print("  masumi check [OPTIONS]")
+        print("\nOptions:")
+        print("  --verbose, -v          Show all checks (including passed)")
+        print("\nThis command checks:")
+        print("  - Python version (>= 3.8)")
+        print("  - Framework compatibility (CrewAI, LangChain, AutoGen)")
+        print("  - Virtual environment status")
+        print("  - Required package installation")
+        print("  - .env file existence")
+        print("  - Environment variables (AGENT_IDENTIFIER, etc.)")
+        print("  - Payment service connectivity")
+        print("\nExamples:")
+        print("  masumi check")
+        print("  masumi check --verbose")
+        sys.exit(0)
+
+    # Parse flags
+    verbose = "--verbose" in args or "-v" in args
+
+    # Run the checker
+    from .checker import run_check
+    try:
+        exit_code = asyncio.run(run_check(verbose=verbose))
+        sys.exit(exit_code)
+    except KeyboardInterrupt:
+        print("\n\nCheck interrupted by user.")
+        sys.exit(1)
+    except Exception as e:
+        print(f"\n❌ Error running check: {e}")
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)
+
+
 def show_help():
     """Display comprehensive help information."""
     print("Masumi Agent Builder CLI")
@@ -413,7 +455,7 @@ def show_help():
     print("\n" + "=" * 70)
     print("\nCOMMANDS")
     print("-" * 70)
-    
+
     print("\n  init")
     print("    Generate a new Masumi agent project with full structure")
     print("\n    Usage:")
@@ -426,7 +468,7 @@ def show_help():
     print("\n    Examples:")
     print("      masumi init")
     print("      masumi init --name my-agent --framework langchain")
-    
+
     print("\n  run")
     print("    Run an agent file (API mode by default)")
     print("\n    Usage:")
@@ -438,7 +480,24 @@ def show_help():
     print("      masumi run agent.py")
     print("      masumi run agent.py --standalone")
     print("      masumi run agent.py --standalone --input '{\"text\": \"Hello\"}'")
-    
+
+    print("\n  check")
+    print("    Validate your Masumi environment and configuration")
+    print("\n    Usage:")
+    print("      masumi check [OPTIONS]")
+    print("\n    Options:")
+    print("      --verbose, -v          Show all checks (including passed)")
+    print("\n    Checks:")
+    print("      - Python version (>= 3.8)")
+    print("      - Framework compatibility (CrewAI, LangChain, AutoGen, LlamaIndex)")
+    print("      - Virtual environment status")
+    print("      - Required packages installation")
+    print("      - Environment variables (AGENT_IDENTIFIER, PAYMENT_API_KEY, etc.)")
+    print("      - Payment service connectivity")
+    print("\n    Examples:")
+    print("      masumi check                    # Quick check (only shows issues)")
+    print("      masumi check --verbose          # Detailed check (shows everything)")
+
     print("\n" + "=" * 70)
     print("\nINIT OPTIONS")
     print("-" * 70)
@@ -477,7 +536,9 @@ def show_help():
     print("     - AGENT_IDENTIFIER (get it after registration)")
     print("     - PAYMENT_API_KEY")
     print("     - SELLER_VKEY")
-    print("\n  4. Run your agent:")
+    print("\n  4. Validate your setup:")
+    print("     masumi check")
+    print("\n  5. Run your agent:")
     print("     masumi run agent.py")
     
     print("\n" + "=" * 70)
@@ -490,27 +551,31 @@ def main():
     if len(sys.argv) > 1 and sys.argv[1] in ["--help", "-h", "help"]:
         show_help()
         sys.exit(0)
-    
+
     if len(sys.argv) < 2:
         print("Masumi Agent Builder CLI")
         print("\nUsage:")
         print("  masumi init [--name NAME] [--dir DIR] [--framework FW]")
         print("  masumi run <file.py> [--standalone] [--input 'JSON']")
+        print("  masumi check")
         print("\nCommands:")
         print("  init      Generate a new Masumi agent project with full structure")
         print("  run       Run an agent file (API mode by default, use --standalone for direct execution)")
+        print("  check     Validate your environment and configuration")
         print("\nUse 'masumi --help' for detailed information and all options.")
         sys.exit(1)
-    
+
     command = sys.argv[1]
     args = sys.argv[2:]
-    
+
     if command == "init":
         init_command(args)
     elif command == "run":
         run_command(args)
+    elif command == "check":
+        check_command(args)
     else:
         print(f"Unknown command: {command}")
-        print("Available commands: init, run")
+        print("Available commands: init, run, check")
         print("Use 'masumi --help' for detailed information.")
         sys.exit(1)

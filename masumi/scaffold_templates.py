@@ -421,10 +421,10 @@ def scaffold(
         # Get project name
         if project_name is None:
             project_name = get_input("Project name", default="masumi-agent")
-        
-        # Get output directory
+
+        # Set output directory to project name automatically
         if output_dir is None:
-            output_dir = get_input("Output directory", default=project_name)
+            output_dir = project_name
         
         # Select framework
         if framework is None:
@@ -644,21 +644,8 @@ def scaffold(
         from .interactive_cli import show_completion_message
         show_completion_message(project_name, output_dir)
     else:
-        print(f"\n✅ Generated Masumi agent project: {output_dir}")
-        print("\nProject structure:")
-        print(f"  {output_dir}/")
-        print(f"    ├── main.py          # Entry point - run this to start the agent")
-        print(f"    ├── agent.py         # Agent logic - implement your agentic behavior here")
-        print(f"    ├── requirements.txt")
-        print(f"    ├── .env.example")
-        print(f"    ├── .gitignore")
-        print(f"    └── README.md")
-        print("\nNext steps:")
-        print(f"  1-3. Quick setup (copy & paste):")
-        print(f"     cd {output_dir} && pip install -r requirements.txt && cp .env.example .env")
-        print("     # Edit .env with your actual values")
-        print("  4. Run your agent:")
-        print("     masumi run main.py")
-        print("     # Or for standalone testing:")
-        print("     masumi run main.py --standalone")
+        print(f"\n✅ Generated Masumi agent project: {output_dir}\n")
+        print(f"Quick start:")
+        print(f"cd {output_dir} && pip install -r requirements.txt && cp .env.example .env")
+        print(f"\nStart Building")
         print()

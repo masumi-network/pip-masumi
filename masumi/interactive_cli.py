@@ -9,7 +9,6 @@ from typing import List, Optional, Dict, Any
 try:
     from InquirerPy import inquirer
     from InquirerPy.base.control import Choice
-    from InquirerPy.separator import Separator
     HAS_INQUIRER = True
 except ImportError:
     HAS_INQUIRER = False
@@ -149,6 +148,7 @@ def select_option(
                 choices=choices,
                 default=default_value,
                 pointer="❯",
+                qmark="❯",  # Custom prompt marker
             ).execute()
             return result
         except KeyboardInterrupt:
@@ -243,6 +243,7 @@ def multi_select(
                 choices=choices,
                 default=default_values,
                 pointer="❯",
+                qmark="❯",  # Custom prompt marker
                 instruction="(Use arrow keys to move, space to select, enter to confirm)",
             ).execute()
             return result if result else []
@@ -315,6 +316,7 @@ def get_input(prompt: str, default: Optional[str] = None, validator: Optional[ca
                 message=prompt,
                 default=default or "",
                 validate=inquirer_validator if validator else None,
+                qmark="❯",  # Custom prompt marker
             ).execute()
             return result if result else (default or "")
         except KeyboardInterrupt:
@@ -367,19 +369,16 @@ def show_completion_message(project_name: str, output_dir: str):
     print(f"\n{Colors.GREEN}{Colors.BOLD}")
     print("╔══════════════════════════════════════════════════════════════════╗")
     print("║                                                                  ║")
-    print("║                    🎉 Project Created! 🎉                        ║")
+    print("║                      Project Created Successfully                ║")
     print("║                                                                  ║")
     print("╚══════════════════════════════════════════════════════════════════╝")
     print(f"{Colors.RESET}\n")
-    
+
     print(f"{Colors.BOLD}Project:{Colors.RESET} {Colors.MASUMI}{project_name}{Colors.RESET}")
     print(f"{Colors.BOLD}Location:{Colors.RESET} {Colors.MASUMI}{output_dir}{Colors.RESET}\n")
-    
-    print(f"{Colors.BOLD}Next steps:{Colors.RESET}")
-    print(f"  {Colors.GREEN}1-3.{Colors.RESET} Quick setup (copy & paste):")
-    print(f"     {Colors.MASUMI}cd {output_dir} && pip install -r requirements.txt && cp .env.example .env{Colors.RESET}")
-    print(f"  {Colors.GREEN}4.{Colors.RESET} Edit .env with your configuration")
-    print(f"  {Colors.GREEN}5.{Colors.RESET} masumi run main.py\n")
-    
-    print(f"{Colors.DIM}Happy coding! 🚀{Colors.RESET}\n")
+
+    print(f"{Colors.BOLD}Quick Setup:{Colors.RESET}")
+    print(f"{Colors.CYAN}cd {output_dir} && pip install -r requirements.txt && cp .env.example .env{Colors.RESET}\n")
+
+    print(f"{Colors.GREEN}{Colors.BOLD}Start Building{Colors.RESET}\n")
 

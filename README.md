@@ -1,7 +1,21 @@
 # Masumi Python SDK
 
-A Python SDK for the Masumi Payment Service, enabling secure blockchain payments between AI agents and users on Cardano.
+[![PyPI version](https://badge.fury.io/py/masumi.svg)](https://badge.fury.io/py/masumi)
+[![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Downloads](https://pepy.tech/badge/masumi)](https://pepy.tech/project/masumi)
 
+
+**Build AI agents that accept blockchain payments in 5 minutes.**
+
+```python
+from masumi import run
+
+async def process_job(identifier: str, input_data: dict):
+    return {"result": input_data["text"].upper()}
+
+run(process_job, INPUT_SCHEMA)  # That's it! 🎉
+```
 ## Overview
 
 The Masumi SDK provides:
@@ -13,6 +27,21 @@ The Masumi SDK provides:
 
 ## Installation
 
+**1. Create and activate a virtual environment (recommended):**
+
+```bash
+# Create a virtual environment
+python3 -m venv venv
+
+# Activate it (Linux/macOS)
+source venv/bin/activate
+
+# Or on Windows
+venv\Scripts\activate
+```
+
+**2. Install Masumi:**
+
 ```bash
 pip install masumi
 ```
@@ -23,19 +52,29 @@ pip install masumi
 
 The easiest way to create and run a Masumi agent:
 
+> **Note:** Make sure you've completed the [Installation](#installation) steps first (create venv, install masumi).
+
 **1. Initialize a new agent:**
 ```bash
 masumi init
 ```
 
-This will generate a project structure with all the boilerplate. You can also specify framework:
+
+
+**2. Install dependencies and set up environment:**
 ```bash
-masumi init --name my-agent --framework langchain
+pip install -r requirements.txt
+cp .env.example .env  # Edit .env with your credentials
 ```
 
-**2. Edit the generated file** to implement your agent logic in the `process_job` function.
+**3. Validate your setup:**
+```bash
+masumi check  # Checks Python version, packages, environment variables, etc.
+```
 
-**3. Run your agent:**
+**4. Edit the generated file** to implement your agent logic in the `process_job` function.
+
+**5. Run your agent:**
 ```bash
 # API mode (default) - runs as FastAPI server
 masumi run agent.py
@@ -521,7 +560,7 @@ The Masumi protocol uses time-based controls for secure transactions:
 
 ## Requirements
 
-- Python 3.8+
+- **Python 3.10-3.13** (recommended for AI frameworks)
 - aiohttp
 - canonicaljson
 - fastapi
