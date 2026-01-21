@@ -217,25 +217,12 @@ INPUT_SCHEMA = {
         {
             "id": "text",
             "type": "string",
-            "name": "Text to Process",
-            "data": {
-                "description": "The text you want to process"
-            },
-            "validations": [
-                {"validation": "required", "value": "true"}
-            ]
+            "name": "Text to Process"
         },
         {
             "id": "operation",
             "type": "option",
-            "name": "Operation",
-            "data": {
-                "description": "Choose how to process the text",
-                "values": ["uppercase", "lowercase", "reverse"]
-            },
-            "validations": [
-                {"validation": "required", "value": "true"}
-            ]
+            "name": "Operation"
         }
     ]
 }

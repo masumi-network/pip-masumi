@@ -104,35 +104,33 @@ class AvailabilityResponse(BaseModel):
         }
 
 
-class InputFieldData(BaseModel):
-    """Data field structure for input schema"""
-    description: Optional[str] = None
-    placeholder: Optional[str] = None
-    values: Optional[List[str]] = None  # For option type
-
-
 class ValidationRule(BaseModel):
     """Validation rule structure"""
-    validation: str = Field(..., description="Validation type (format, min, max, etc.)")
+    validation: str = Field(..., description="Type of validation (min, max, format, accept, optional)")
     value: str = Field(..., description="Validation value")
 
 
 class InputField(BaseModel):
-    """Input field structure for input schema"""
+    """Input field structure for input schema according to MIP-003 Attachment 01"""
     id: str = Field(..., description="Unique identifier of the input field")
-    type: str = Field(..., description="Type of input (string, number, boolean, option, none)")
-    name: Optional[str] = Field(None, description="Displayed name for the input field")
-    data: Optional[InputFieldData] = Field(None, description="Additional configuration")
-    validations: Optional[List[ValidationRule]] = Field(None, description="Validation rules")
+    type: str = Field(..., description="Type of input (text, textarea, number, boolean, option, none, email, password, tel, url, date, datetime-local, time, month, week, color, range, file, hidden, search, checkbox, radio)")
+    name: str = Field(..., description="Displayed name for the input field")
+    data: Optional[Dict[str, Any]] = Field(None, description="Additional data specific to the input type (placeholder, description, default, values, etc.)")
+    validations: Optional[List[ValidationRule]] = Field(None, description="Array of validation rules")
     
     class Config:
         json_schema_extra = {
             "example": {
                 "id": "full_name",
-                "type": "string",
+                "type": "text",
                 "name": "Full Name",
+                "data": {
+                    "placeholder": "Enter your full name",
+                    "description": "Your first and last name"
+                },
                 "validations": [
-                    {"validation": "format", "value": "email"}
+                    {"validation": "min", "value": "3"},
+                    {"validation": "max", "value": "100"}
                 ]
             }
         }

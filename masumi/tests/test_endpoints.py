@@ -91,10 +91,7 @@ def test_validation_string_field():
             {
                 "id": "text",
                 "type": "string",
-                "name": "Text",
-                "validations": [
-                    {"validation": "optional", "value": "true"}
-                ]
+                "name": "Text"
             }
         ]
     }
@@ -102,8 +99,9 @@ def test_validation_string_field():
     # Valid input
     validate_input_data({"text": "hello"}, schema)
     
-    # Missing optional field - should not raise
-    validate_input_data({}, schema)
+    # Missing field - should raise (fields are required by default)
+    with pytest.raises(ValidationError):
+        validate_input_data({}, schema)
 
 
 def test_validation_required_field():
@@ -113,10 +111,7 @@ def test_validation_required_field():
             {
                 "id": "text",
                 "type": "string",
-                "name": "Text",
-                "validations": [
-                    {"validation": "required", "value": "true"}
-                ]
+                "name": "Text"
             }
         ]
     }
@@ -135,11 +130,8 @@ def test_validation_email_format():
         "input_data": [
             {
                 "id": "email",
-                "type": "string",
-                "name": "Email",
-                "validations": [
-                    {"validation": "format", "value": "email"}
-                ]
+                "type": "email",
+                "name": "Email"
             }
         ]
     }
@@ -159,25 +151,17 @@ def test_validation_min_max_length():
             {
                 "id": "text",
                 "type": "string",
-                "name": "Text",
-                "validations": [
-                    {"validation": "min", "value": "3"},
-                    {"validation": "max", "value": "10"}
-                ]
+                "name": "Text"
             }
         ]
     }
     
-    # Valid length
+    # Valid input
     validate_input_data({"text": "hello"}, schema)
     
-    # Too short
+    # Empty string should fail (required field)
     with pytest.raises(ValidationError):
-        validate_input_data({"text": "hi"}, schema)
-    
-    # Too long
-    with pytest.raises(ValidationError):
-        validate_input_data({"text": "this is too long"}, schema)
+        validate_input_data({"text": ""}, schema)
 
 
 def test_validation_option_field():
@@ -187,20 +171,111 @@ def test_validation_option_field():
             {
                 "id": "choice",
                 "type": "option",
-                "name": "Choice",
-                "data": {
-                    "values": ["option1", "option2", "option3"]
-                }
+                "name": "Choice"
             }
         ]
     }
     
-    # Valid option
+    # Valid option (validation of option values removed)
     validate_input_data({"choice": "option1"}, schema)
+
+
+def test_validation_with_validations_array():
+    """Test validating fields with validations array (new MIP-003 format)."""
+    schema = {
+        "input_data": [
+            {
+                "id": "username",
+                "type": "text",
+                "name": "Username",
+                "data": {
+                    "placeholder": "Enter username",
+                    "description": "3-20 characters"
+                },
+                "validations": [
+                    {"validation": "min", "value": "3"},
+                    {"validation": "max", "value": "20"}
+                ]
+            }
+        ]
+    }
     
-    # Invalid option
+    # Valid input
+    validate_input_data({"username": "testuser"}, schema)
+    
+    # Too short
     with pytest.raises(ValidationError):
-        validate_input_data({"choice": "invalid_option"}, schema)
+        validate_input_data({"username": "ab"}, schema)
+    
+    # Too long
+    with pytest.raises(ValidationError):
+        validate_input_data({"username": "a" * 21}, schema)
+
+
+def test_validation_optional_field():
+    """Test validating optional fields."""
+    schema = {
+        "input_data": [
+            {
+                "id": "required_field",
+                "type": "text",
+                "name": "Required Field"
+            },
+            {
+                "id": "optional_field",
+                "type": "text",
+                "name": "Optional Field",
+                "validations": [
+                    {"validation": "optional", "value": "true"}
+                ]
+            }
+        ]
+    }
+    
+    # Valid - both fields provided
+    validate_input_data({"required_field": "value", "optional_field": "value"}, schema)
+    
+    # Valid - optional field missing
+    validate_input_data({"required_field": "value"}, schema)
+    
+    # Invalid - required field missing
+    with pytest.raises(ValidationError):
+        validate_input_data({"optional_field": "value"}, schema)
+
+
+def test_validation_format_validation():
+    """Test format validation."""
+    schema = {
+        "input_data": [
+            {
+                "id": "email_field",
+                "type": "email",
+                "name": "Email",
+                "validations": [
+                    {"validation": "format", "value": "email"}
+                ]
+            },
+            {
+                "id": "text_field",
+                "type": "text",
+                "name": "Text",
+                "validations": [
+                    {"validation": "format", "value": "nonempty"}
+                ]
+            }
+        ]
+    }
+    
+    # Valid email
+    validate_input_data({"email_field": "test@example.com", "text_field": "hello"}, schema)
+    
+    # Invalid email
+    with pytest.raises(ValidationError):
+        validate_input_data({"email_field": "not-an-email", "text_field": "hello"}, schema)
+    
+    # Empty text field (should fail nonempty format)
+    with pytest.raises(ValidationError):
+        validate_input_data({"email_field": "test@example.com", "text_field": ""}, schema)
 
 
 def test_in_memory_job_storage():
