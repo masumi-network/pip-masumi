@@ -2,6 +2,8 @@
 Masumi Payment Module for Cardano blockchain integration.
 """
 
+import warnings
+
 # Load environment variables from .env file if available
 try:
     from dotenv import load_dotenv
@@ -36,6 +38,37 @@ from .models import (
 
 __version__ = "0.1.41"
 
+
+class Agent:
+    """
+    DEPRECATED: The Agent class has been removed.
+    
+    Use `create_masumi_app()` or `MasumiAgentServer` instead.
+    
+    Migration guide:
+    - Old: `agent = Agent(config, agent_id)`
+    - New: `app = create_masumi_app(config=config, agent_identifier=agent_id, ...)`
+    
+    Or for more control:
+    - New: `server = MasumiAgentServer(config=config, agent_identifier=agent_id, ...)`
+    
+    See README.md for examples and migration instructions.
+    """
+    
+    def __init__(self, *args, **kwargs):
+        warnings.warn(
+            "The Agent class has been removed. "
+            "Use 'create_masumi_app()' or 'MasumiAgentServer' instead. "
+            "See README.md for migration instructions.",
+            DeprecationWarning,
+            stacklevel=2
+        )
+        raise RuntimeError(
+            "The Agent class has been removed. "
+            "Please use 'create_masumi_app()' or 'MasumiAgentServer' instead. "
+            "See README.md for examples and migration instructions."
+        )
+
 __all__ = [
     # Original exports (backward compatibility)
     "Config",
@@ -66,4 +99,6 @@ __all__ = [
     "ValidationRule",
     # CLI exports
     "run",
+    # Deprecated (will warn on import/use)
+    "Agent",
 ]
