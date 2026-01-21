@@ -2,8 +2,45 @@
 Pydantic models for MIP-003 request and response structures.
 """
 
+from enum import Enum
 from typing import List, Optional, Dict, Any
 from pydantic import BaseModel, Field
+
+
+class JobStatus(str, Enum):
+    """Job status enumeration."""
+    AWAITING_PAYMENT = "awaiting_payment"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    AWAITING_INPUT = "awaiting_input"
+    UNKNOWN = "unknown"
+
+
+class PaymentOnChainState(str, Enum):
+    """Payment on-chain state enumeration."""
+    FUNDS_LOCKED = "FundsLocked"
+    FUNDS_OR_DATUM_INVALID = "FundsOrDatumInvalid"
+    RESULT_SUBMITTED = "ResultSubmitted"
+    REFUND_REQUESTED = "RefundRequested"
+    DISPUTED = "Disputed"
+    WITHDRAWN = "Withdrawn"
+    REFUND_WITHDRAWN = "RefundWithdrawn"
+    DISPUTED_WITHDRAWN = "DisputedWithdrawn"
+
+
+class PaymentNextAction(str, Enum):
+    """Payment next action enumeration."""
+    NONE = "None"
+    IGNORE = "Ignore"
+    WAITING_FOR_MANUAL_ACTION = "WaitingForManualAction"
+    WAITING_FOR_EXTERNAL_ACTION = "WaitingForExternalAction"
+    SUBMIT_RESULT_REQUESTED = "SubmitResultRequested"
+    SUBMIT_RESULT_INITIATED = "SubmitResultInitiated"
+    WITHDRAW_REQUESTED = "WithdrawRequested"
+    WITHDRAW_INITIATED = "WithdrawInitiated"
+    AUTHORIZE_REFUND_REQUESTED = "AuthorizeRefundRequested"
+    AUTHORIZE_REFUND_INITIATED = "AuthorizeRefundInitiated"
 
 
 class StartJobRequest(BaseModel):

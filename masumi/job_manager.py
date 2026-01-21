@@ -8,6 +8,7 @@ import uuid
 import logging
 from .payment import Payment
 from .helper_functions import setup_logging
+from .models import JobStatus
 
 logger = setup_logging(__name__)
 
@@ -126,7 +127,7 @@ class JobManager:
         
         job_data = {
             "job_id": job_id,
-            "status": "awaiting_payment",
+            "status": JobStatus.AWAITING_PAYMENT.value,
             "payment_id": blockchain_identifier,
             "identifier_from_purchaser": identifier_from_purchaser,
             "input_data": input_data,
@@ -162,7 +163,7 @@ class JobManager:
         """Mark a job as running and confirm payment."""
         await self.update_job_status(
             job_id, 
-            "running"
+            JobStatus.RUNNING.value
         )
     
     async def set_job_completed(self, job_id: str, result: str) -> None:
@@ -197,7 +198,7 @@ class JobManager:
 
         await self.update_job_status(
             job_id,
-            "completed",
+            JobStatus.COMPLETED.value,
             result=result
         )
         logger.info(f"Job {job_id} marked as completed")
@@ -206,7 +207,7 @@ class JobManager:
         """Mark a job as failed with an error message."""
         await self.update_job_status(
             job_id,
-            "failed",
+            JobStatus.FAILED.value,
             error=error
         )
         logger.error(f"Job {job_id} marked as failed: {error}")
