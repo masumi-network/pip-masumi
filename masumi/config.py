@@ -22,6 +22,8 @@ class Config:
         Validate that all required configuration parameters are set.
         Raises ValueError if any required parameter is missing.
         """
+        import os
+        
         required_configs = {
             "PAYMENT_SERVICE_URL": self.payment_service_url,
             "PAYMENT_API_KEY": self.payment_api_key,
@@ -29,4 +31,13 @@ class Config:
 
         missing_configs = [key for key, value in required_configs.items() if not value]
         if missing_configs:
-            raise ValueError(f"Missing required configuration parameters: {', '.join(missing_configs)}")
+            error_msg = f"Missing required configuration parameters: {', '.join(missing_configs)}\n\n"
+            error_msg += "Please ensure these environment variables are set. You can:\n"
+            error_msg += "1. Set them in your environment:\n"
+            error_msg += f"   export {' '.join(missing_configs)}\n\n"
+            error_msg += "2. Or add them to a .env file in your project directory:\n"
+            for key in missing_configs:
+                error_msg += f"   {key}=your_value_here\n"
+            error_msg += "\nNote: The .env file should be in the same directory as your main.py file.\n"
+            error_msg += f"Current working directory: {os.getcwd()}\n"
+            raise ValueError(error_msg)

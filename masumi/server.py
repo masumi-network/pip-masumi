@@ -57,9 +57,9 @@ class MasumiAgentServer:
         
         Args:
             config: Configuration with API endpoints and keys
-            agent_identifier: Agent identifier from admin interface (REQUIRED for API mode).
+            agent_identifier: Agent identifier from admin interface (OPTIONAL for API mode).
                               Can be provided directly or via AGENT_IDENTIFIER environment variable.
-                              The API server will not start without this identifier.
+                              If not provided, the server will start with a warning and use a placeholder identifier.
             network: Network to use (Preprod or Mainnet)
             job_storage: Optional custom job storage backend
             start_job_handler: Handler for executing agent logic
@@ -74,21 +74,25 @@ class MasumiAgentServer:
             seller_vkey: Optional seller wallet vkey (if not provided, will be loaded from SELLER_VKEY environment variable)
         
         Raises:
-            ValueError: If agent_identifier is not provided (either directly or via AGENT_IDENTIFIER env var).
-                        This prevents the API server from starting without required masumi configuration.
-                        Also raises ValueError if seller_vkey is not provided (either directly or via SELLER_VKEY env var).
+            ValueError: If seller_vkey is not provided (either directly or via SELLER_VKEY env var).
+                        Note: agent_identifier is optional - if not provided, a warning will be logged and
+                        a placeholder identifier will be used.
         """
         import os
         
-        # Validate agent_identifier is provided
+        # Load agent_identifier from environment if not provided
         if not agent_identifier:
             agent_identifier = os.getenv("AGENT_IDENTIFIER")
         
+        # Warn if agent_identifier is not provided, but allow server to start
         if not agent_identifier:
-            raise ValueError(
-                "agent_identifier is required. Provide it directly or set AGENT_IDENTIFIER environment variable. "
+            logger.warning(
+                "AGENT_IDENTIFIER is not set. The agent will run but may have limited functionality. "
+                "Set AGENT_IDENTIFIER environment variable or provide it directly. "
                 "Get your agent_identifier from the admin interface after registering your agent."
             )
+            # Use a placeholder for agent_identifier to allow server to start
+            agent_identifier = "unregistered-agent"
         
         # Load seller_vkey from environment if not provided
         if not seller_vkey:
@@ -491,9 +495,9 @@ def create_masumi_app(
     
     Args:
         config: Configuration with API endpoints and keys
-        agent_identifier: Agent identifier from admin interface (REQUIRED for API mode).
+        agent_identifier: Agent identifier from admin interface (OPTIONAL for API mode).
                           Can be provided directly or via AGENT_IDENTIFIER environment variable.
-                          The API server will not start without this identifier.
+                          If not provided, the server will start with a warning and use a placeholder identifier.
         network: Network to use (Preprod or Mainnet)
         job_storage: Optional custom job storage backend
         start_job_handler: Handler for executing agent logic (required)
@@ -510,9 +514,9 @@ def create_masumi_app(
     Returns:
         FastAPI: Configured FastAPI application
     
-    Raises:
-        ValueError: If agent_identifier is not provided (either directly or via AGENT_IDENTIFIER env var).
-                    This prevents the API server from starting without required masumi configuration.
+    Note:
+        agent_identifier is optional - if not provided, a warning will be logged and a placeholder
+        identifier will be used. The server will still start successfully.
     """
     server = MasumiAgentServer(
         config=config,

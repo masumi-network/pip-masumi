@@ -27,15 +27,15 @@ if not logger.handlers:
 
 
 def _load_dotenv_if_available():
-    """Load .env file from current directory."""
+    """Load .env file as a fallback (main.py should load it, but this ensures compatibility)."""
     try:
         from dotenv import load_dotenv
+        # Simple call - load_dotenv() searches from current directory upward automatically
         load_dotenv()
-    except ImportError as e:
-        raise ImportError(
-            "python-dotenv is required for loading .env files. "
-            "Please install it with: pip install python-dotenv"
-        ) from e
+    except ImportError:
+        # python-dotenv is optional - if not installed, that's okay
+        # (user should install it if they want .env file support)
+        pass
 
 
 def run(
@@ -343,8 +343,14 @@ def run_command(args):
             os.environ.pop("MASUMI_STANDALONE", None)
             
             # Execute the file using subprocess to ensure proper module resolution
+            # Set working directory to the file's directory so .env file can be found
             import subprocess
-            result = subprocess.run([sys.executable, file_path], check=False)
+            file_dir = os.path.dirname(os.path.abspath(file_path))
+            result = subprocess.run(
+                [sys.executable, file_path],
+                cwd=file_dir,
+                check=False
+            )
             sys.exit(result.returncode)
         except Exception as e:
             print(f"Error running file: {e}")
