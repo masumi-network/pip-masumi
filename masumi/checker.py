@@ -7,7 +7,8 @@ import os
 import sys
 import asyncio
 import importlib.util
-from typing import List
+import re
+from typing import List, Optional, Tuple
 from dataclasses import dataclass
 
 
@@ -18,6 +19,89 @@ class CheckResult:
     message: str
     fix_hint: str = ""
     level: str = "error"  # error, warning, info
+
+
+def is_hex_string(value: str) -> bool:
+    """Check if a string is a valid hexadecimal string."""
+    try:
+        int(value, 16)
+        return True
+    except ValueError:
+        return False
+
+
+def validate_agent_identifier(value: str) -> Tuple[bool, Optional[str]]:
+    """
+    Validate AGENT_IDENTIFIER format.
+    
+    Returns:
+        Tuple of (is_valid, error_message)
+    """
+    if not value or not value.strip():
+        return False, "AGENT_IDENTIFIER cannot be empty. Note: The agent identifier is assigned automatically and can be found in the admin interface after agent registration."
+    
+    value = value.strip()
+    
+    # Check exact length (must be 120 characters)
+    if len(value) != 120:
+        return False, f"AGENT_IDENTIFIER must be exactly 120 characters (got {len(value)}). Note: The agent identifier is assigned automatically and can be found in the admin interface after agent registration."
+    
+    # Must be a valid hex string (only 0-9, a-f, A-F)
+    if not is_hex_string(value):
+        return False, "AGENT_IDENTIFIER must be a valid hex string (only 0-9, a-f, A-F allowed). Note: The agent identifier is assigned automatically and can be found in the admin interface after agent registration."
+    
+    return True, None
+
+
+def validate_payment_api_key(value: str) -> Tuple[bool, Optional[str]]:
+    """
+    Validate PAYMENT_API_KEY format.
+    
+    Returns:
+        Tuple of (is_valid, error_message)
+    """
+    if not value or not value.strip():
+        return False, "PAYMENT_API_KEY cannot be empty. Note: You can find or create it in your admin interface."
+    
+    value = value.strip()
+    
+    # Check minimum length (API keys are typically at least 16 characters)
+    if len(value) < 16:
+        return False, "PAYMENT_API_KEY is too short (minimum 16 characters). Note: You can find or create it in your admin interface."
+    
+    # Check maximum reasonable length
+    if len(value) > 512:
+        return False, "PAYMENT_API_KEY is too long (maximum 512 characters). Note: You can find or create it in your admin interface."
+    
+    # API keys can be:
+    # - Hex strings (if it's all hex, validate as hex)
+    # - Base64-like strings (alphanumeric with +, /, =)
+    # - Prefixed strings like "sk_live_..." (alphanumeric with underscores)
+    # So we'll be lenient but check for obviously invalid characters
+    if not re.match(r'^[a-zA-Z0-9_+/=-]+$', value):
+        return False, "PAYMENT_API_KEY contains invalid characters. Note: You can find or create it in your admin interface."
+    
+    return True, None
+
+
+def validate_seller_vkey(value: str) -> Tuple[bool, Optional[str]]:
+    """
+    Validate SELLER_VKEY format (hex string).
+    
+    Returns:
+        Tuple of (is_valid, error_message)
+    """
+    if not value or not value.strip():
+        return False, "SELLER_VKEY cannot be empty. Note: You can find it in your admin panel wallet or payment sources section."
+    
+    value = value.strip()
+    
+    # Must be a valid hex string (only 0-9, a-f, A-F)
+    # Length can vary, but must be hex only
+    if not is_hex_string(value):
+        return False, "SELLER_VKEY must be a valid hex string (only 0-9, a-f, A-F allowed). Note: You can find it in your admin panel wallet or payment sources section."
+    
+    return True, None
 
 
 class MasumiChecker:
@@ -171,20 +255,40 @@ class MasumiChecker:
 
         results = []
 
-        # Required variables
+        # Required variables with validation
         required_vars = ["AGENT_IDENTIFIER", "PAYMENT_API_KEY", "SELLER_VKEY"]
         missing = []
 
         for var_name in required_vars:
             value = os.getenv(var_name)
             if value:
-                # Mask sensitive values
-                display_value = f"{value[:4]}...{value[-4:]}" if len(value) > 10 else "***"
-                results.append(CheckResult(
-                    passed=True,
-                    message=f"{var_name} set",
-                    level="info"
-                ))
+                # Validate format based on variable type
+                is_valid = True
+                error_msg = None
+                
+                if var_name == "AGENT_IDENTIFIER":
+                    is_valid, error_msg = validate_agent_identifier(value)
+                elif var_name == "PAYMENT_API_KEY":
+                    is_valid, error_msg = validate_payment_api_key(value)
+                elif var_name == "SELLER_VKEY":
+                    is_valid, error_msg = validate_seller_vkey(value)
+                
+                if is_valid:
+                    # Mask sensitive values
+                    display_value = f"{value[:4]}...{value[-4:]}" if len(value) > 10 else "***"
+                    results.append(CheckResult(
+                        passed=True,
+                        message=f"{var_name} set ({display_value})",
+                        level="info"
+                    ))
+                else:
+                    # Validation failed
+                    results.append(CheckResult(
+                        passed=False,
+                        message=f"{var_name} format invalid: {error_msg}",
+                        fix_hint=f"Check that {var_name} is correctly formatted. Get it from the Masumi admin interface.",
+                        level="error"
+                    ))
             else:
                 missing.append(var_name)
 
