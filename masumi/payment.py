@@ -334,102 +334,145 @@ class Payment:
         logger.info(f"Starting payment status monitoring with {interval_seconds} second interval")
         
         async def monitor_task():
-            logger.info("Payment status monitoring task started")
+            """
+            Granular monitoring task that checks each payment individually using 
+            /payment/resolve-blockchain-identifier endpoint.
+            
+            This approach:
+            - Reduces network bandwidth by only fetching specific payments
+            - Reduces compute/database load on payment service
+            - Allows for staggered checks to avoid burst traffic
+            - Enables per-payment interval optimization
+            """
+            logger.info("Payment status monitoring task started (granular mode)")
+            
+            # Track last check time for each payment to enable staggered checking
+            payment_check_times: Dict[str, float] = {}
+            
             while True:
                 try:
-                    logger.info(f"Checking payment status for {len(self.payment_ids)} payments")
                     if not self.payment_ids:
-                        logger.warning("No payment IDs to monitor, waiting for next interval")
-                    else:
-                        # Check each payment individually using the resolve-blockchain-identifier endpoint
-                        payments_to_remove = []
-                        successful_checks = 0
-                        failed_checks = 0
+                        logger.debug("No payment IDs to monitor, waiting for next interval")
+                        await asyncio.sleep(interval_seconds)
+                        continue
+                    
+                    current_time = asyncio.get_event_loop().time()
+                    payments_to_check = []
+                    
+                    # Determine which payments need checking based on their last check time
+                    # Stagger checks to avoid burst traffic
+                    for payment_id in list(self.payment_ids):
+                        last_check = payment_check_times.get(payment_id, 0)
+                        time_since_check = current_time - last_check
                         
-                        for payment_id in list(self.payment_ids):  # Create a copy to iterate safely
-                            try:
-                                logger.debug(f"Checking status for payment {payment_id}")
-                                result = await self.check_payment_status_by_identifier(payment_id)
-                                
-                                # Handle case where payment is not found
-                                if result.get("status") == "error" or not result.get("data"):
-                                    logger.warning(f"Payment {payment_id} not found or error in response, will retry next interval")
-                                    failed_checks += 1
-                                    continue
-                                
-                                successful_checks += 1
-                                payment = result.get("data", {})
-                                on_chain_state = payment.get("onChainState")
-                                next_action = payment.get("NextAction", {}).get("requestedAction")
-                                logger.info(f"Payment {payment_id}: onChainState={on_chain_state}, NextAction={next_action}")
-                                
-                                # Trigger callback ONLY when payment is ready to process (FundsLocked)
-                                # and we haven't triggered it yet
-                                if on_chain_state == PaymentOnChainState.FUNDS_LOCKED.value and payment_id not in self._callback_triggered_ids:
-                                    logger.info(f"Payment {payment_id} reached FundsLocked state, triggering callback")
-                                    self._callback_triggered_ids.add(payment_id)
-                                    
-                                    # Call the callback function if provided
-                                    if callback:
-                                        async def run_callback():
-                                            """Run callback in a separate task to avoid blocking"""
-                                            try:
-                                                logger.info(f"Calling callback function for payment {payment_id}")
-                                                if asyncio.iscoroutinefunction(callback):
-                                                    await callback(payment)
-                                                else:
-                                                    # Run synchronous callback in thread pool to avoid blocking
-                                                    loop = asyncio.get_event_loop()
-                                                    await loop.run_in_executor(None, callback, payment)
-                                            except Exception as e:
-                                                logger.error(f"Error in callback function for payment {payment_id}: {str(e)}", exc_info=True)
-                                        
-                                        # Create task for callback execution (non-blocking)
-                                        callback_task = asyncio.create_task(run_callback())
-                                        self._callback_tasks.add(callback_task)
-                                        
-                                        # Remove task from tracking when it completes
-                                        def remove_callback_task(task):
-                                            self._callback_tasks.discard(task)
-                                        callback_task.add_done_callback(remove_callback_task)
-                                
-                                # Remove from tracking when payment is actually complete
-                                # This happens after the callback has processed the payment and submitted results
-                                if (on_chain_state in [
-                                    PaymentOnChainState.WITHDRAWN.value,
-                                    PaymentOnChainState.REFUND_WITHDRAWN.value,
-                                    PaymentOnChainState.DISPUTED_WITHDRAWN.value
-                                ] or
-                                    next_action == PaymentNextAction.NONE.value):
-                                    
-                                    logger.info(f"Payment {payment_id} is complete, removing from tracking")
-                                    payments_to_remove.append(payment_id)
-                                    # Clean up callback tracking
-                                    self._callback_triggered_ids.discard(payment_id)
+                        # Check if enough time has passed for this payment
+                        if time_since_check >= interval_seconds:
+                            payments_to_check.append(payment_id)
+                    
+                    if not payments_to_check:
+                        # All payments were recently checked, wait a bit before next round
+                        await asyncio.sleep(min(interval_seconds, 5))
+                        continue
+                    
+                    logger.debug(f"Checking {len(payments_to_check)} payment(s) individually using resolve-blockchain-identifier")
+                    
+                    payments_to_remove = []
+                    successful_checks = 0
+                    failed_checks = 0
+                    
+                    # Check each payment individually with small stagger to avoid burst
+                    for idx, payment_id in enumerate(payments_to_check):
+                        try:
+                            # Small stagger between checks (100ms) to avoid overwhelming the service
+                            if idx > 0:
+                                await asyncio.sleep(0.1)
                             
-                            except Exception as e:
-                                logger.error(f"Error checking status for payment {payment_id}: {str(e)}")
-                                # Continue checking other payments even if one fails
+                            logger.debug(f"Checking status for payment {payment_id[:8]}... using resolve-blockchain-identifier")
+                            result = await self.check_payment_status_by_identifier(payment_id)
+                            
+                            # Update last check time
+                            payment_check_times[payment_id] = current_time
+                            
+                            # Handle case where payment is not found
+                            if result.get("status") == "error" or not result.get("data"):
+                                logger.warning(f"Payment {payment_id[:8]}... not found or error, will retry next interval")
+                                failed_checks += 1
                                 continue
+                            
+                            successful_checks += 1
+                            payment = result.get("data", {})
+                            on_chain_state = payment.get("onChainState")
+                            next_action = payment.get("NextAction", {}).get("requestedAction")
+                            logger.debug(f"Payment {payment_id[:8]}...: state={on_chain_state}, action={next_action}")
+                            
+                            # Trigger callback ONLY when payment is ready to process (FundsLocked)
+                            # and we haven't triggered it yet
+                            if on_chain_state == PaymentOnChainState.FUNDS_LOCKED.value and payment_id not in self._callback_triggered_ids:
+                                logger.info(f"Payment {payment_id[:8]}... reached FundsLocked state, triggering callback")
+                                self._callback_triggered_ids.add(payment_id)
+                                
+                                # Call the callback function if provided
+                                if callback:
+                                    async def run_callback():
+                                        """Run callback in a separate task to avoid blocking"""
+                                        try:
+                                            logger.info(f"Calling callback function for payment {payment_id[:8]}...")
+                                            if asyncio.iscoroutinefunction(callback):
+                                                await callback(payment)
+                                            else:
+                                                # Run synchronous callback in thread pool to avoid blocking
+                                                loop = asyncio.get_event_loop()
+                                                await loop.run_in_executor(None, callback, payment)
+                                        except Exception as e:
+                                            logger.error(f"Error in callback function for payment {payment_id[:8]}...: {str(e)}", exc_info=True)
+                                    
+                                    # Create task for callback execution (non-blocking)
+                                    callback_task = asyncio.create_task(run_callback())
+                                    self._callback_tasks.add(callback_task)
+                                    
+                                    # Remove task from tracking when it completes
+                                    def remove_callback_task(task):
+                                        self._callback_tasks.discard(task)
+                                    callback_task.add_done_callback(remove_callback_task)
+                            
+                            # Remove from tracking when payment is actually complete
+                            # This happens after the callback has processed the payment and submitted results
+                            # Stop checking when result is submitted or payment reaches final withdrawal states
+                            if (on_chain_state in [
+                                PaymentOnChainState.RESULT_SUBMITTED.value
+
+                            ] or
+                                next_action == PaymentNextAction.NONE.value):
+                                
+                                logger.info(f"Payment {payment_id[:8]}... is complete, removing from tracking")
+                                payments_to_remove.append(payment_id)
+                                # Clean up tracking
+                                self._callback_triggered_ids.discard(payment_id)
+                                payment_check_times.pop(payment_id, None)
                         
-                        # Remove completed payments
-                        for payment_id in payments_to_remove:
-                            self.payment_ids.discard(payment_id)
-                        
-                        logger.info(f"Status check completed: {successful_checks} successful, {failed_checks} failed, {len(self.payment_ids)} active payments remaining")
+                        except Exception as e:
+                            logger.error(f"Error checking status for payment {payment_id[:8]}...: {str(e)}")
+                            failed_checks += 1
+                            # Continue checking other payments even if one fails
+                            continue
+                    
+                    # Remove completed payments
+                    for payment_id in payments_to_remove:
+                        self.payment_ids.discard(payment_id)
+                    
+                    if successful_checks > 0 or failed_checks > 0:
+                        logger.debug(f"Granular check completed: {successful_checks} successful, {failed_checks} failed, {len(self.payment_ids)} active")
                 
                     # If no more payments to monitor, exit the loop
                     if not self.payment_ids:
                         logger.info("No more payments to monitor, stopping monitoring task")
                         return
                     
-                    # Wait for the next interval
-                    logger.info(f"Waiting {interval_seconds} seconds before next status check")
-                    await asyncio.sleep(interval_seconds)
+                    # Short sleep before next check cycle (payments are checked individually based on their last check time)
+                    await asyncio.sleep(1)
                     
                 except Exception as e:
-                    logger.error(f"Error during status monitoring: {str(e)}")
-                    logger.info(f"Will retry in {interval_seconds} seconds")
+                    logger.error(f"Error during status monitoring: {str(e)}", exc_info=True)
                     await asyncio.sleep(interval_seconds)
         
         # Create and store the monitoring task
