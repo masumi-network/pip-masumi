@@ -14,9 +14,36 @@ import uvicorn
 
 from .config import Config
 from .server import MasumiAgentServer, create_masumi_app
-from .helper_functions import setup_logging
+from .helper_functions import setup_logging, ColoredFormatter
 
 logger = setup_logging(__name__)
+
+
+def _configure_uvicorn_logging():
+    """Configure uvicorn loggers to use our beautiful formatter."""
+    # Get uvicorn loggers
+    uvicorn_logger = logging.getLogger("uvicorn")
+    uvicorn_access = logging.getLogger("uvicorn.access")
+    uvicorn_error = logging.getLogger("uvicorn.error")
+    
+    # Remove default handlers
+    for log in [uvicorn_logger, uvicorn_access, uvicorn_error]:
+        log.handlers.clear()
+    
+    # Create new handlers with our formatter
+    handler = logging.StreamHandler()
+    formatter = ColoredFormatter(use_colors=True, use_emojis=True)
+    handler.setFormatter(formatter)
+    
+    # Set levels
+    uvicorn_logger.setLevel(logging.INFO)
+    uvicorn_access.setLevel(logging.WARNING)  # Suppress verbose HTTP access logs
+    uvicorn_error.setLevel(logging.INFO)
+    
+    # Add handlers
+    uvicorn_logger.addHandler(handler)
+    uvicorn_access.addHandler(handler)
+    uvicorn_error.addHandler(handler)
 
 
 def _load_dotenv_if_available():
@@ -113,6 +140,9 @@ def run(
         **kwargs
     )
     
+    # Configure uvicorn logging to use our beautiful formatter
+    _configure_uvicorn_logging()
+    
     # Display startup information
     display_host = "127.0.0.1" if host == "0.0.0.0" else host
     print("\n" + "=" * 70)
@@ -124,8 +154,14 @@ def run(
     print(f"Start Job:                http://{display_host}:{port}/start_job")
     print("=" * 70 + "\n")
     
-    # Run server
-    uvicorn.run(app, host=host, port=port, log_level="info")
+    # Run server with cleaner logging
+    uvicorn.run(
+        app, 
+        host=host, 
+        port=port, 
+        log_level="info",
+        log_config=None  # Use our custom logging config
+    )
 
 
 def _run_standalone(

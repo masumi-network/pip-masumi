@@ -3,18 +3,106 @@ import json
 import canonicaljson
 import logging as logger
 import logging
+import sys
+import os
 
 
-def setup_logging(name, level=logging.INFO):
+class ColoredFormatter(logging.Formatter):
+    """Beautiful colored formatter for Masumi logs."""
+    
+    # ANSI color codes
+    COLORS = {
+        'DEBUG': '\033[36m',      # Cyan
+        'INFO': '\033[32m',       # Green
+        'WARNING': '\033[33m',    # Yellow
+        'ERROR': '\033[31m',      # Red
+        'CRITICAL': '\033[35m',   # Magenta
+    }
+    RESET = '\033[0m'
+    BOLD = '\033[1m'
+    
+    # Emojis for log levels
+    EMOJIS = {
+        'DEBUG': '🔍',
+        'INFO': 'ℹ️',
+        'WARNING': '⚠️',
+        'ERROR': '❌',
+        'CRITICAL': '🚨',
+    }
+    
+    def __init__(self, use_colors=True, use_emojis=True, short_names=True):
+        """
+        Initialize the colored formatter.
+        
+        Args:
+            use_colors: Whether to use ANSI colors (default: True, auto-detects TTY)
+            use_emojis: Whether to use emojis for log levels (default: True)
+            short_names: Whether to shorten module names (default: True)
+        """
+        # Auto-detect if colors should be used (check if output is a TTY)
+        if use_colors and not hasattr(sys.stdout, 'isatty'):
+            use_colors = False
+        elif use_colors:
+            use_colors = sys.stdout.isatty() and os.getenv('TERM') != 'dumb'
+        
+        self.use_colors = use_colors
+        self.use_emojis = use_emojis
+        self.short_names = short_names
+        
+        # Use a simpler format
+        super().__init__()
+    
+    def format(self, record):
+        """Format the log record with colors and emojis."""
+        # Shorten module names (e.g., "masumi.server" -> "server")
+        # Use a local variable to avoid modifying the original record
+        display_name = record.name
+        if self.short_names:
+            name_parts = record.name.split('.')
+            if len(name_parts) > 1 and name_parts[0] == 'masumi':
+                display_name = '.'.join(name_parts[1:])
+            elif len(name_parts) > 2:
+                # For deeply nested modules, show last 2 parts
+                display_name = '.'.join(name_parts[-2:])
+        
+        # Get level name and color
+        levelname = record.levelname
+        color = self.COLORS.get(levelname, '')
+        emoji = self.EMOJIS.get(levelname, '') if self.use_emojis else ''
+        
+        # Build the formatted message
+        if self.use_colors:
+            level_str = f"{color}{self.BOLD}{levelname:8s}{self.RESET}"
+            name_str = f"\033[90m{display_name}\033[0m"  # Dim gray for module name
+        else:
+            level_str = f"{levelname:8s}"
+            name_str = display_name
+        
+        # Format: emoji LEVEL module: message
+        if emoji:
+            formatted = f"{emoji} {level_str} {name_str}: {record.getMessage()}"
+        else:
+            formatted = f"{level_str} {name_str}: {record.getMessage()}"
+        
+        # Add exception info if present
+        if record.exc_info:
+            formatted += '\n' + self.formatException(record.exc_info)
+        
+        return formatted
+
+
+def setup_logging(name, level=logging.INFO, use_colors=True, use_emojis=True):
     """
     Centralized logging configuration for Masumi modules.
     
-    Configures a logger with a console handler if no handlers are present.
+    Configures a logger with a beautiful colored console handler if no handlers are present.
     This prevents duplicate handlers when the function is called multiple times.
     
     Args:
         name: Logger name (typically __name__ of the calling module)
         level: Logging level (default: logging.INFO)
+        use_colors: Whether to use colors (default: True, auto-detects TTY)
+        use_emojis: Whether to use emojis for log levels (default: True)
     
     Returns:
         logging.Logger: Configured logger instance
@@ -25,7 +113,7 @@ def setup_logging(name, level=logging.INFO):
     if not logger_instance.handlers:
         console_handler = logging.StreamHandler()
         console_handler.setLevel(level)
-        formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+        formatter = ColoredFormatter(use_colors=use_colors, use_emojis=use_emojis)
         console_handler.setFormatter(formatter)
         logger_instance.addHandler(console_handler)
     
