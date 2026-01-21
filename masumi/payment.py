@@ -68,6 +68,7 @@ class Payment:
         self.payment_type = "Web3CardanoV1"
         self.payment_ids: Set[str] = set()
         self._callback_triggered_ids: Set[str] = set()
+        self._callback_tasks: Set[asyncio.Task] = set()  # Track callback tasks to prevent memory leaks
         self.identifier_from_purchaser = identifier_from_purchaser
         self._status_check_task: Optional[asyncio.Task] = None
         self.config = config
@@ -384,7 +385,13 @@ class Payment:
                                                 logger.error(f"Error in callback function for payment {payment_id}: {str(e)}", exc_info=True)
                                         
                                         # Create task for callback execution (non-blocking)
-                                        asyncio.create_task(run_callback())
+                                        callback_task = asyncio.create_task(run_callback())
+                                        self._callback_tasks.add(callback_task)
+                                        
+                                        # Remove task from tracking when it completes
+                                        def remove_callback_task(task):
+                                            self._callback_tasks.discard(task)
+                                        callback_task.add_done_callback(remove_callback_task)
                                 
                                 # Remove from tracking when payment is actually complete
                                 # This happens after the callback has processed the payment and submitted results
@@ -434,6 +441,7 @@ class Payment:
         Stop the payment status monitoring.
         
         Cancels the monitoring task if it's running.
+        Also cancels any pending callback tasks to prevent memory leaks.
         """
         if self._status_check_task:
             logger.info("Stopping payment status monitoring")
@@ -441,7 +449,16 @@ class Payment:
             self._status_check_task = None
             # Clean up callback tracking
             self._callback_triggered_ids.clear()
-        else:
+        
+        # Cancel any pending callback tasks
+        if self._callback_tasks:
+            logger.debug(f"Cancelling {len(self._callback_tasks)} pending callback tasks")
+            for task in self._callback_tasks.copy():
+                if not task.done():
+                    task.cancel()
+            self._callback_tasks.clear()
+        
+        if not self._status_check_task and not self._callback_tasks:
             logger.debug("No monitoring task to stop")
 
     async def check_purchase_status(self, purchase_id: str) -> Dict:
