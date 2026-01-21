@@ -22,6 +22,7 @@ setup(
         "pydantic>=2.0.0",
         "python-dotenv>=0.19.0",
         "InquirerPy>=0.3.4",
+        "pip-system-certs>=4.0.0",
     ],
     author="Patrick Tobler",
     author_email="patrick@nmkr.io",

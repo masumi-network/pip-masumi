@@ -51,8 +51,7 @@ def test_config():
     
     config = Config(
         payment_service_url="https://payment.masumi.network/api/v1",
-        payment_api_key="iofsnaiojdoiewqajdriknjonasfoinasd",
-        verify_ssl=False  # Disable SSL verification for tests
+        payment_api_key="iofsnaiojdoiewqajdriknjonasfoinasd"
     )
     
     logger.info("=== Configuration Details ===")
