@@ -6,19 +6,9 @@ import json
 from typing import List, Optional, Dict, Any, Set
 import aiohttp
 from .config import Config
-from .helper_functions import create_masumi_input_hash, create_masumi_output_hash
+from .helper_functions import create_masumi_input_hash, create_masumi_output_hash, setup_logging
 
-# Configure logging
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
-
-# Create console handler if no handlers exist
-if not logger.handlers:
-    console_handler = logging.StreamHandler()
-    console_handler.setLevel(logging.INFO)
-    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-    console_handler.setFormatter(formatter)
-    logger.addHandler(console_handler)
+logger = setup_logging(__name__)
 
 @dataclass
 class Amount:
