@@ -4,7 +4,7 @@ Input schema validation according to MIP-003 Attachment 01.
 
 import re
 import logging
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from .models import InputField, ValidationRule
 
 logger = logging.getLogger(__name__)
@@ -19,8 +19,22 @@ if not logger.handlers:
 
 
 class ValidationError(Exception):
-    """Raised when input validation fails."""
-    pass
+    """
+    Raised when input validation fails.
+    
+    Contains validation error information useful for debugging and admin interface.
+    """
+    def __init__(self, message: str, field_errors: Optional[Dict[str, List[str]]] = None):
+        """
+        Initialize validation error.
+        
+        Args:
+            message: Human-readable error message
+            field_errors: Optional dict mapping field IDs to list of error messages for that field
+        """
+        super().__init__(message)
+        self.message = message
+        self.field_errors = field_errors or {}
 
 
 def validate_email(value: str) -> bool:
@@ -414,6 +428,9 @@ def validate_input_data(
     # Build a map of field IDs to field definitions
     field_map = {field.id: field for field in field_objects}
     
+    # Collect errors by field for structured error reporting
+    field_errors_dict: Dict[str, List[str]] = {}
+    
     # Validate each field in input_data
     for field_id, value in input_data.items():
         if field_id not in field_map:
@@ -423,18 +440,25 @@ def validate_input_data(
         
         field = field_map[field_id]
         field_errors = validate_field_value(value, field)
-        errors.extend(field_errors)
+        if field_errors:
+            field_errors_dict[field_id] = field_errors
+            errors.extend(field_errors)
     
     # Check for required fields that are missing
     # According to MIP-003: fields are required by default unless optional validation is set
     for field in field_objects:
         if field.id not in input_data:
             if not is_field_optional(field):
-                errors.append(f"Required field '{field.id}' is missing")
+                error_msg = f"Required field '{field.id}' is missing"
+                errors.append(error_msg)
+                if field.id not in field_errors_dict:
+                    field_errors_dict[field.id] = []
+                field_errors_dict[field.id].append(error_msg)
     
     if errors:
         error_message = "Validation failed: " + "; ".join(errors)
         logger.error(error_message)
-        raise ValidationError(error_message)
+        # Include structured field errors for admin interface
+        raise ValidationError(error_message, field_errors=field_errors_dict)
     
     logger.debug("Input data validation passed")
