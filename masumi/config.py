@@ -1,6 +1,8 @@
 class Config:
     """
-    Centralized configuration for the masumi_crewai package.
+    Centralized configuration for the masumi package.
+    
+    Holds configuration values for payment service, registry service, and network addresses.
     """
 
     def __init__(self, payment_service_url: str, payment_api_key: str,
@@ -19,23 +21,17 @@ class Config:
         """
         Validate that all required configuration parameters are set.
         Raises ValueError if any required parameter is missing.
-        """
-        import os
         
-        required_configs = {
-            "PAYMENT_SERVICE_URL": self.payment_service_url,
-            "PAYMENT_API_KEY": self.payment_api_key,
-        }
-
-        missing_configs = [key for key, value in required_configs.items() if not value]
+        For detailed diagnostics, use: masumi check
+        """
+        missing_configs = []
+        
+        if not self.payment_service_url:
+            missing_configs.append("PAYMENT_SERVICE_URL")
+        if not self.payment_api_key:
+            missing_configs.append("PAYMENT_API_KEY")
+        
         if missing_configs:
-            error_msg = f"Missing required configuration parameters: {', '.join(missing_configs)}\n\n"
-            error_msg += "Please ensure these environment variables are set. You can:\n"
-            error_msg += "1. Set them in your environment:\n"
-            error_msg += f"   export {' '.join(missing_configs)}\n\n"
-            error_msg += "2. Or add them to a .env file in your project directory:\n"
-            for key in missing_configs:
-                error_msg += f"   {key}=your_value_here\n"
-            error_msg += "\nNote: The .env file should be in the same directory as your main.py file.\n"
-            error_msg += f"Current working directory: {os.getcwd()}\n"
+            error_msg = f"Missing required configuration parameters: {', '.join(missing_configs)}"
+            error_msg += "\n\nRun 'masumi check' for detailed diagnostics and setup instructions."
             raise ValueError(error_msg)
