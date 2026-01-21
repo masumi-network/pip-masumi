@@ -212,7 +212,9 @@ class MasumiAgentServer:
                 )
                 
                 # Set up payment callback
-                async def payment_callback(payment_id: str):
+                # Callback receives the full payment dict (as per payment.py documentation)
+                async def payment_callback(payment: Dict[str, Any]):
+                    payment_id = payment.get("blockchainIdentifier", "")
                     await self._handle_payment_confirmed(job_id, payment_id)
                 
                 # Start monitoring payment
