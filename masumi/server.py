@@ -6,7 +6,7 @@ import asyncio
 import json
 import logging
 import uuid
-from typing import Optional, Callable, Dict, Any, Awaitable, Union
+from typing import Optional, Callable, Dict, Any, Awaitable, Union, Set
 from fastapi import FastAPI, HTTPException, Query
 
 from .config import Config
@@ -104,6 +104,9 @@ class MasumiAgentServer:
         self.network = network
         self.seller_vkey = seller_vkey
         
+        # Track background tasks to prevent memory leaks
+        self._background_tasks: Set[asyncio.Task] = set()
+        
         # Initialize job manager with storage
         storage = job_storage or InMemoryJobStorage()
         self.job_manager = JobManager(storage)
@@ -131,6 +134,11 @@ class MasumiAgentServer:
             description="MIP-003 compliant agent API with Masumi payment integration",
             version="1.0.0"
         )
+        
+        # Register shutdown handler to clean up background tasks
+        @self.app.on_event("shutdown")
+        async def shutdown_handler():
+            await self.cleanup_background_tasks()
         
         # Register all endpoints
         self._register_endpoints()
@@ -358,7 +366,11 @@ class MasumiAgentServer:
             # Start actual job execution in a background task
             # This ensures that the payment monitoring loop is not blocked
             # and the server remains responsive to status requests
-            asyncio.create_task(self._execute_agent_job(job_id))
+            task = asyncio.create_task(self._execute_agent_job(job_id))
+            self._background_tasks.add(task)
+            
+            # Remove task from tracking when it completes
+            task.add_done_callback(self._background_tasks.discard)
             
             logger.info(f"Agent logic task spawned for job {job_id}")
             
@@ -441,6 +453,22 @@ class MasumiAgentServer:
                 await self.job_manager.cleanup_payment_instance(job_id)
             except Exception as cleanup_error:
                 logger.error(f"Error during final cleanup: {cleanup_error}", exc_info=True)
+    
+    async def cleanup_background_tasks(self):
+        """Cancel all background tasks to prevent memory leaks on shutdown."""
+        if self._background_tasks:
+            logger.info(f"Cancelling {len(self._background_tasks)} background tasks")
+            for task in self._background_tasks.copy():
+                if not task.done():
+                    task.cancel()
+                    try:
+                        await task
+                    except asyncio.CancelledError:
+                        pass
+                    except Exception as e:
+                        logger.warning(f"Error cancelling background task: {e}")
+            self._background_tasks.clear()
+            logger.info("All background tasks cleaned up")
     
     def get_app(self) -> FastAPI:
         """Get the FastAPI application instance."""
