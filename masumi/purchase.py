@@ -2,11 +2,9 @@ from typing import Dict, Optional
 import logging
 import aiohttp
 from .config import Config
-from .helper_functions import create_masumi_input_hash
+from .helper_functions import create_masumi_input_hash, setup_logging
 
-
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
+logger = setup_logging(__name__, level=logging.DEBUG)
 
 
 class Purchase:

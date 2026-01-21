@@ -2,6 +2,34 @@ import hashlib
 import json
 import canonicaljson
 import logging as logger
+import logging
+
+
+def setup_logging(name, level=logging.INFO):
+    """
+    Centralized logging configuration for Masumi modules.
+    
+    Configures a logger with a console handler if no handlers are present.
+    This prevents duplicate handlers when the function is called multiple times.
+    
+    Args:
+        name: Logger name (typically __name__ of the calling module)
+        level: Logging level (default: logging.INFO)
+    
+    Returns:
+        logging.Logger: Configured logger instance
+    """
+    logger_instance = logging.getLogger(name)
+    logger_instance.setLevel(level)
+    
+    if not logger_instance.handlers:
+        console_handler = logging.StreamHandler()
+        console_handler.setLevel(level)
+        formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+        console_handler.setFormatter(formatter)
+        logger_instance.addHandler(console_handler)
+    
+    return logger_instance
 
 def _create_hash_from_payload(payload_string: str, identifier_from_purchaser: str) -> str:
     """

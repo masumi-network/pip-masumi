@@ -23,16 +23,9 @@ from .models import (
 from .endpoints import AgentEndpointHandler
 from .job_manager import JobManager, JobStorage, InMemoryJobStorage
 from .validation import validate_input_data, ValidationError
+from .helper_functions import setup_logging
 
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
-
-if not logger.handlers:
-    console_handler = logging.StreamHandler()
-    console_handler.setLevel(logging.INFO)
-    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-    console_handler.setFormatter(formatter)
-    logger.addHandler(console_handler)
+logger = setup_logging(__name__)
 
 
 class MasumiAgentServer:
