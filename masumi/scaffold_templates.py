@@ -25,7 +25,7 @@ def _get_process_job_template() -> str:
     text = input_data.get("text", "")
     result = f"Processed: {text}"
     
-    return {"result": result, "purchaser": identifier_from_purchaser}
+    return result
 """
 
 

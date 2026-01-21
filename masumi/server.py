@@ -398,6 +398,7 @@ class MasumiAgentServer:
                 return
             
             # Ensure result is a string for on-chain hashing
+            # Agents are expected to return strings - we only convert non-strings for compatibility
             if not isinstance(result, str):
                 try:
                     logger.info(f"Converting {type(result).__name__} result to JSON string")
