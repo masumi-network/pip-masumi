@@ -23,7 +23,7 @@ The Masumi SDK provides:
 - **Payment**: Seller-side operations (create payment requests, monitor status, complete transactions)
 - **Purchase**: Buyer-side operations (create purchases, request refunds)
 
-> **Note**: Agents are registered via the admin interface, not programmatically. Get your `agent_identifier` from the admin interface after registration.
+> **Note**: Agents are registered via the admin interface, not programmatically. Get your `agent_identifier` from the admin interface after registration. See the [Masumi Documentation](https://docs.masumi.network/) for more details.
 
 ## Installation
 
@@ -86,6 +86,9 @@ masumi run agent.py --standalone --input '{"text": "Hello"}'
 ```
 
 **Example agent file (`agent.py`):**
+
+> **Note:** Input schemas follow MIP-003 Attachment 01. See [Schema Validator docs](https://docs.masumi.network/documentation/technical-documentation/schema-validator-component) for validation rules.
+
 ```python
 #!/usr/bin/env python3
 import os
@@ -113,9 +116,9 @@ if __name__ == "__main__":
 ```
 
 **Required environment variables for API mode:**
-- `AGENT_IDENTIFIER` - Your agent ID from admin interface (REQUIRED)
-- `PAYMENT_API_KEY` - Your payment API key (REQUIRED)
-- `SELLER_VKEY` - Your seller wallet verification key (REQUIRED)
+- `AGENT_IDENTIFIER` - Your agent ID from admin interface (OPTIONAL for starting the API, but REQUIRED after registration for the API to work completely)
+- `PAYMENT_API_KEY` - Your payment API key from admin interface (REQUIRED)
+- `SELLER_VKEY` - Your seller wallet verification key (REQUIRED for API mode and creating purchases)
 - `PAYMENT_SERVICE_URL` - Payment service URL (optional, defaults to production)
 - `NETWORK` - Network to use: "Preprod" or "Mainnet" (optional, defaults to "Preprod")
 
@@ -156,11 +159,11 @@ def get_input_schema():
 
 # Create FastAPI app with all MIP-003 endpoints
 # Payment creation, monitoring, completion all handled automatically!
-# agent_identifier is REQUIRED - get it from admin interface after registering your agent
-# If AGENT_IDENTIFIER environment variable is not set, the server will raise ValueError
+# agent_identifier is OPTIONAL for starting the API, but REQUIRED after registration for the API to work completely
+# If AGENT_IDENTIFIER environment variable is not set, the server will start with a warning
 app = create_masumi_app(
     config=config,
-    agent_identifier=os.getenv("AGENT_IDENTIFIER"),  # REQUIRED: From admin interface
+    agent_identifier=os.getenv("AGENT_IDENTIFIER"),  # OPTIONAL: From admin interface (required after registration)
     network=os.getenv("NETWORK", "Preprod"),
     start_job_handler=process_job,
     input_schema_handler=get_input_schema
@@ -223,16 +226,16 @@ The easiest way to create MIP-003 compliant agent APIs. Handles all endpoints, p
 from masumi import create_masumi_app, Config
 import os
 
-# agent_identifier is REQUIRED - get it from admin interface
+# agent_identifier is OPTIONAL for starting the API, but REQUIRED after registration for the API to work completely
 app = create_masumi_app(
     config=config,
-    agent_identifier=os.getenv("AGENT_IDENTIFIER"),  # REQUIRED: From admin interface
+    agent_identifier=os.getenv("AGENT_IDENTIFIER"),  # OPTIONAL: From admin interface (required after registration)
     start_job_handler=your_agent_function,
     input_schema_handler=your_schema_function
 )
 ```
 
-**Important:** `agent_identifier` is required. If not provided directly or via the `AGENT_IDENTIFIER` environment variable, the server will raise a `ValueError` and refuse to start.
+**Important:** `agent_identifier` is optional for starting the API. If not provided, the server will start with a warning and use a placeholder identifier. However, it must be provided after registration for the API to work completely.
 
 **Using `MasumiAgentServer` (more control):**
 
@@ -650,7 +653,7 @@ pytest masumi/tests/test_endpoints.py::test_start_job_handler_registration
 
 **For Running the Server (Production/Development):**
 
-- `AGENT_IDENTIFIER` (**required**): Agent identifier from admin interface. The server will raise `ValueError` and refuse to start if this is not provided. You can either:
+- `AGENT_IDENTIFIER` (**optional**): Agent identifier from admin interface. The server will start without it (with a warning), but it must be provided after registration for the API to work completely. You can either:
   - Set the environment variable: `export AGENT_IDENTIFIER="your-agent-id"`
   - Pass it directly: `create_masumi_app(agent_identifier="your-agent-id", ...)`
 - `SELLER_VKEY` (**required**): Seller wallet verification key from admin interface. The server will raise `ValueError` and refuse to start if this is not provided. You can either:

@@ -15,7 +15,7 @@ To run:
     # Or: masumi run example_usage.py --standalone --input '{"text": "Hello", "operation": "uppercase"}'
 
 Required environment variables for API mode:
-    - AGENT_IDENTIFIER: Your agent ID from admin interface (REQUIRED for API)
+    - AGENT_IDENTIFIER: Your agent ID from admin interface (OPTIONAL for starting the API, but REQUIRED after registration for the API to work completely)
     - PAYMENT_API_KEY: Your payment API key (REQUIRED for API)
     - SELLER_VKEY: Your seller wallet verification key (REQUIRED for API)
     - PAYMENT_SERVICE_URL: Payment service URL (optional, defaults to production)

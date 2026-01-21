@@ -46,7 +46,7 @@ def _get_env_template(database: Optional[str], additional_libs: List[str]) -> st
     env_lines = [
         "# Masumi Agent Configuration",
         "# Copy this file to .env: cp .env.example .env",
-        "# Get credentials from: https://admin.masumi.network",
+        "# Get credentials from: admin interface",
         "",
         "# ============================================",
         "# REQUIRED (for API mode)",
