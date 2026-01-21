@@ -289,7 +289,7 @@ Manages payment requests from the seller's perspective.
 
 **Key Methods:**
 - `create_payment_request()` - Create a new payment request
-- `check_payment_status()` - Check status of payments
+- `check_payment_status_by_identifier(blockchain_identifier)` - Check status of a specific payment
 - `complete_payment(blockchain_identifier, output_string)` - Submit work results
 - `start_status_monitoring(callback, check_interval)` - Monitor payment status with callback
 - `authorize_refund(blockchain_identifier)` - Authorize a refund request
@@ -639,9 +639,6 @@ Run specific test files:
 ```bash
 # Run endpoint abstraction tests
 pytest masumi/tests/test_endpoints.py
-
-# Run payment/purchase tests
-pytest masumi/tests/test_masumi.py
 ```
 
 Run specific test functions:
@@ -665,22 +662,7 @@ pytest masumi/tests/test_endpoints.py::test_start_job_handler_registration
 
 **For Running Tests:**
 
-- `TEST_AGENT_ID` (optional): Agent identifier from admin interface. Defaults to `"test-agent-id-from-admin"` for unit tests.
-- `TEST_SELLER_VKEY` (optional): Seller wallet verification key. Defaults to `"test-seller-vkey-from-admin"` for unit tests.
-
-For integration tests that interact with the actual payment service, you'll also need:
-
-- `PAYMENT_SERVICE_URL`: Payment service API URL (defaults to test URL in fixtures)
-- `PAYMENT_API_KEY`: Payment service API key (defaults to test key in fixtures)
-
-**Example:**
-```bash
-export TEST_AGENT_ID="your-agent-id-from-admin"
-export TEST_SELLER_VKEY="your-seller-vkey"
-pytest
-```
-
-**Note:** Unit tests (in `test_endpoints.py`) don't require these variables as they test the abstraction layer in isolation. Integration tests (in `test_masumi.py`) that interact with the payment service may require valid credentials.
+Unit tests (in `test_endpoints.py`) don't require any environment variables as they test the abstraction layer in isolation.
 
 ### Test Coverage
 

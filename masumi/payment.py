@@ -193,85 +193,64 @@ class Payment:
             logger.error(f"Network error during payment request: {str(e)}")
             raise
 
-    async def check_payment_status(self, limit: int = 100) -> Dict[str, Any]:
+    async def check_payment_status_by_identifier(self, blockchain_identifier: str) -> Dict[str, Any]:
         """
-        Check the status of all tracked payments with pagination support.
+        Check the status of a specific payment by blockchain identifier.
         
         Args:
-            limit (int, optional): Number of payments to return per page. Defaults to 100.
+            blockchain_identifier (str): The blockchain identifier of the payment to check
             
         Returns:
-            Dict[str, Any]: Response containing all payment statuses (paginated results combined)
+            Dict[str, Any]: Response containing the payment status
             
         Raises:
-            ValueError: If no payment IDs available
+            ValueError: If blockchain_identifier is empty
             Exception: If status check fails
         """
-        if not self.payment_ids:
-            logger.warning("Attempted to check payment status with no payment IDs")
-            # Instead of raising an error, return an empty response structure
-            return {
-                "status": "success",
-                "data": {
-                    "Payments": []
-                }
-            }
-
-        logger.debug(f"Checking status for payment IDs: {self.payment_ids}")
+        if not blockchain_identifier:
+            raise ValueError("blockchain_identifier cannot be empty")
         
-        all_payments = []
-        cursor_id = None
+        logger.debug(f"Checking status for payment: {blockchain_identifier}")
         
         try:
             connector = aiohttp.TCPConnector()
             async with aiohttp.ClientSession(connector=connector) as session:
-                while True:
-                    # Build query parameters
-                    params = {
-                        'network': self.network,
-                        'limit': limit
-                    }
-                    
-                    # Add cursor for pagination if we have one
-                    if cursor_id:
-                        params['cursorId'] = cursor_id
-                    
-                    async with session.get(
-                        f"{self.config.payment_service_url}/payment/",
-                        headers=self._headers,
-                        params=params
-                    ) as response:
-                        if response.status != 200:
-                            error_text = await response.text()
-                            logger.error(f"Status check failed: {error_text}")
-                            raise Exception(f"Status check failed: {error_text}")
-                        
-                        result = await response.json()
-                        logger.debug(f"Received status response page with cursor: {cursor_id}")
-                        
-                        # Extract payments from this page
-                        payments = result.get("data", {}).get("Payments", [])
-                        all_payments.extend(payments)
-                        
-                        # Check if there's a next page
-                        cursor_id = result.get("data", {}).get("cursorId")
-                        if not cursor_id or len(payments) < limit:
-                            # No more pages
-                            break
-                
-                # Return combined result
-                combined_result = {
-                    "status": "success",
-                    "data": {
-                        "Payments": all_payments
-                    }
+                # Build query parameters
+                params = {
+                    'network': self.network,
+                    'blockchainIdentifier': blockchain_identifier
                 }
                 
-                logger.debug(f"Retrieved {len(all_payments)} total payments across all pages")
-                return combined_result
+                url = f"{self.config.payment_service_url}/payment/resolve-blockchain-identifier"
+                logger.debug(f"Calling payment status endpoint: {url} with params: network={self.network}, blockchainIdentifier={blockchain_identifier[:8]}...")
+                
+                async with session.get(
+                    url,
+                    headers=self._headers,
+                    params=params
+                ) as response:
+                    logger.debug(f"Payment status check response status: {response.status} for payment {blockchain_identifier}")
+                    
+                    if response.status == 404:
+                        error_text = await response.text()
+                        logger.warning(f"Payment {blockchain_identifier} not found: {error_text}")
+                        return {
+                            "status": "error",
+                            "message": f"Payment {blockchain_identifier} not found",
+                            "data": None
+                        }
+                    if response.status != 200:
+                        error_text = await response.text()
+                        logger.error(f"Status check failed for payment {blockchain_identifier} with status {response.status}: {error_text}")
+                        raise Exception(f"Status check failed: {error_text}")
+                    
+                    result = await response.json()
+                    logger.debug(f"Successfully received status response for payment {blockchain_identifier}")
+                    logger.debug(f"Payment {blockchain_identifier} status: {result.get('data', {}).get('onChainState', 'Unknown')}")
+                    return result
                 
         except aiohttp.ClientError as e:
-            logger.error(f"Network error during status check: {str(e)}")
+            logger.error(f"Network error during status check for payment {blockchain_identifier}: {str(e)}")
             raise
 
     async def complete_payment(self, blockchain_identifier: str, job_output: str) -> Dict[str, Any]:
@@ -370,14 +349,24 @@ class Payment:
                     if not self.payment_ids:
                         logger.warning("No payment IDs to monitor, waiting for next interval")
                     else:
-                        result = await self.check_payment_status()
-                        payments = result.get("data", {}).get("Payments", [])
-                        logger.info(f"Status check completed, found {len(payments)} payments")
+                        # Check each payment individually using the resolve-blockchain-identifier endpoint
+                        payments_to_remove = []
+                        successful_checks = 0
+                        failed_checks = 0
                         
-                        # Process each payment in the response
-                        for payment in payments:
-                            payment_id = payment.get("blockchainIdentifier")
-                            if payment_id in self.payment_ids:
+                        for payment_id in list(self.payment_ids):  # Create a copy to iterate safely
+                            try:
+                                logger.debug(f"Checking status for payment {payment_id}")
+                                result = await self.check_payment_status_by_identifier(payment_id)
+                                
+                                # Handle case where payment is not found
+                                if result.get("status") == "error" or not result.get("data"):
+                                    logger.warning(f"Payment {payment_id} not found or error in response, will retry next interval")
+                                    failed_checks += 1
+                                    continue
+                                
+                                successful_checks += 1
+                                payment = result.get("data", {})
                                 on_chain_state = payment.get("onChainState")
                                 next_action = payment.get("NextAction", {}).get("requestedAction")
                                 logger.info(f"Payment {payment_id}: onChainState={on_chain_state}, NextAction={next_action}")
@@ -413,9 +402,20 @@ class Payment:
                                     next_action == "None"):
                                     
                                     logger.info(f"Payment {payment_id} is complete, removing from tracking")
-                                    self.payment_ids.remove(payment_id)
+                                    payments_to_remove.append(payment_id)
                                     # Clean up callback tracking
                                     self._callback_triggered_ids.discard(payment_id)
+                            
+                            except Exception as e:
+                                logger.error(f"Error checking status for payment {payment_id}: {str(e)}")
+                                # Continue checking other payments even if one fails
+                                continue
+                        
+                        # Remove completed payments
+                        for payment_id in payments_to_remove:
+                            self.payment_ids.discard(payment_id)
+                        
+                        logger.info(f"Status check completed: {successful_checks} successful, {failed_checks} failed, {len(self.payment_ids)} active payments remaining")
                 
                     # If no more payments to monitor, exit the loop
                     if not self.payment_ids:
