@@ -147,8 +147,7 @@ class Payment:
         logger.info(f"Payment request payload prepared: {payload}")
 
         try:
-            # Create connector with SSL configuration from config
-            connector = aiohttp.TCPConnector(ssl=self.config.verify_ssl)
+            connector = aiohttp.TCPConnector()
             async with aiohttp.ClientSession(connector=connector) as session:
                 logger.debug("Sending payment request to API")
                 async with session.post(
@@ -224,8 +223,7 @@ class Payment:
         cursor_id = None
         
         try:
-            # Create connector with SSL configuration from config
-            connector = aiohttp.TCPConnector(ssl=self.config.verify_ssl)
+            connector = aiohttp.TCPConnector()
             async with aiohttp.ClientSession(connector=connector) as session:
                 while True:
                     # Build query parameters
@@ -311,8 +309,7 @@ class Payment:
         logger.debug(f"Payment completion payload: {payload}")
         
         try:
-            # Create connector with SSL configuration from config
-            connector = aiohttp.TCPConnector(ssl=self.config.verify_ssl)
+            connector = aiohttp.TCPConnector()
             async with aiohttp.ClientSession(connector=connector) as session:
                 logger.debug("Sending payment completion request to API")
                 async with session.post(
@@ -458,8 +455,7 @@ class Payment:
         logger.info(f"Checking status for purchase with ID: {purchase_id}")
         
         try:
-            # Create connector with SSL configuration from config
-            connector = aiohttp.TCPConnector(ssl=self.config.verify_ssl)
+            connector = aiohttp.TCPConnector()
             async with aiohttp.ClientSession(connector=connector) as session:
                 async with session.get(
                     f"{self.config.payment_service_url}/purchase/{purchase_id}",
@@ -501,8 +497,7 @@ class Payment:
         logger.debug(f"Authorize refund payload: {payload}")
         
         try:
-            # Create connector with SSL configuration from config
-            connector = aiohttp.TCPConnector(ssl=self.config.verify_ssl)
+            connector = aiohttp.TCPConnector()
             async with aiohttp.ClientSession(connector=connector) as session:
                 async with session.post(
                     f"{self.config.payment_service_url}/payment/authorize-refund",

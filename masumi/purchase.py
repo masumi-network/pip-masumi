@@ -98,8 +98,7 @@ class Purchase:
             logger.debug(f"inputHash: {payload['inputHash']}")
         
         try:
-            # Create connector with SSL configuration from config
-            connector = aiohttp.TCPConnector(ssl=self.config.verify_ssl)
+            connector = aiohttp.TCPConnector()
             async with aiohttp.ClientSession(connector=connector) as session:
                 async with session.post(
                     f"{self.config.payment_service_url}/purchase/",
@@ -132,8 +131,7 @@ class Purchase:
         logger.debug(f"Refund request payload: {payload}")
         
         try:
-            # Create connector with SSL configuration from config
-            connector = aiohttp.TCPConnector(ssl=self.config.verify_ssl)
+            connector = aiohttp.TCPConnector()
             async with aiohttp.ClientSession(connector=connector) as session:
                 async with session.post(
                     f"{self.config.payment_service_url}/purchase/request-refund",
@@ -166,8 +164,7 @@ class Purchase:
         logger.debug(f"Cancel refund payload: {payload}")
         
         try:
-            # Create connector with SSL configuration from config
-            connector = aiohttp.TCPConnector(ssl=self.config.verify_ssl)
+            connector = aiohttp.TCPConnector()
             async with aiohttp.ClientSession(connector=connector) as session:
                 async with session.post(
                     f"{self.config.payment_service_url}/purchase/cancel-refund-request",
