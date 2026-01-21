@@ -156,7 +156,18 @@ class MasumiAgentServer:
                     try:
                         validate_input_data(request.input_data or {}, schema)
                     except ValidationError as e:
-                        raise HTTPException(status_code=400, detail=str(e))
+                        # Log validation error with context for admin interface
+                        logger.warning(
+                            f"Input validation failed for agent {self.agent_identifier}: {str(e)}. "
+                            f"Request from purchaser: {request.identifier_from_purchaser[:8] if request.identifier_from_purchaser else 'unknown'}... "
+                            f"Field errors: {getattr(e, 'field_errors', {})}"
+                        )
+                        # Return structured error information useful for admin interface
+                        error_detail = {
+                            "message": str(e),
+                            "field_errors": getattr(e, 'field_errors', {})
+                        }
+                        raise HTTPException(status_code=400, detail=error_detail)
                     except Exception as e:
                         logger.warning(f"Error validating input: {e}")
                 
