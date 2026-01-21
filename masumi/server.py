@@ -24,6 +24,7 @@ from .endpoints import AgentEndpointHandler
 from .job_manager import JobManager, JobStorage, InMemoryJobStorage
 from .validation import validate_input_data, ValidationError
 from .helper_functions import setup_logging
+from .models import JobStatus
 
 logger = setup_logging(__name__)
 
@@ -260,7 +261,7 @@ class MasumiAgentServer:
             if not job:
                 raise HTTPException(status_code=404, detail="Job not found")
             
-            status = job.get("status", "unknown")
+            status = job.get("status", JobStatus.UNKNOWN.value)
             result = job.get("result")
             # Result should already be a string (agents return strings)
             # Return None if result is not set yet
@@ -268,7 +269,7 @@ class MasumiAgentServer:
             
             # Include input schema if awaiting input
             input_schema = None
-            if status == "awaiting_input":
+            if status == JobStatus.AWAITING_INPUT.value:
                 input_schema = self.handler.get_input_schema()
             
             return StatusResponse(

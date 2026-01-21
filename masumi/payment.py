@@ -7,6 +7,7 @@ from typing import List, Optional, Dict, Any, Set
 import aiohttp
 from .config import Config
 from .helper_functions import create_masumi_input_hash, create_masumi_output_hash, setup_logging
+from .models import PaymentOnChainState, PaymentNextAction
 
 logger = setup_logging(__name__)
 
@@ -317,7 +318,7 @@ class Payment:
         
         Args:
             callback (Callable, optional): Function to call when a payment is ready to process.
-                The callback is triggered when payment reaches "FundsLocked" state (payment confirmed).
+                The callback is triggered when payment reaches FundsLocked state (PaymentOnChainState.FUNDS_LOCKED).
                 The function will receive the full payment dict as its parameter.
                 Can be either a regular function or an async function.
                 The callback runs in a separate task to avoid blocking the monitoring loop.
@@ -363,7 +364,7 @@ class Payment:
                                 
                                 # Trigger callback ONLY when payment is ready to process (FundsLocked)
                                 # and we haven't triggered it yet
-                                if on_chain_state == "FundsLocked" and payment_id not in self._callback_triggered_ids:
+                                if on_chain_state == PaymentOnChainState.FUNDS_LOCKED.value and payment_id not in self._callback_triggered_ids:
                                     logger.info(f"Payment {payment_id} reached FundsLocked state, triggering callback")
                                     self._callback_triggered_ids.add(payment_id)
                                     
@@ -387,9 +388,12 @@ class Payment:
                                 
                                 # Remove from tracking when payment is actually complete
                                 # This happens after the callback has processed the payment and submitted results
-                                if (on_chain_state == "Complete" or
-                                    next_action == "PaymentComplete" or 
-                                    next_action == "None"):
+                                if (on_chain_state in [
+                                    PaymentOnChainState.WITHDRAWN.value,
+                                    PaymentOnChainState.REFUND_WITHDRAWN.value,
+                                    PaymentOnChainState.DISPUTED_WITHDRAWN.value
+                                ] or
+                                    next_action == PaymentNextAction.NONE.value):
                                     
                                     logger.info(f"Payment {payment_id} is complete, removing from tracking")
                                     payments_to_remove.append(payment_id)
