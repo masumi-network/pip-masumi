@@ -149,8 +149,7 @@ def get_input_schema():
             {
                 "id": "text",
                 "type": "string",
-                "name": "Task Description",
-                "data": {"description": "The text input for the AI task"}
+                "name": "Task Description"
             }
         ]
     }

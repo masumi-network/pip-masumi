@@ -5,7 +5,7 @@ Input schema validation according to MIP-003 Attachment 01.
 import re
 import logging
 from typing import Dict, Any, List
-from .models import InputField
+from .models import InputField, ValidationRule
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -88,6 +88,17 @@ def validate_format(value: Any, format_type: str) -> bool:
 
 def validate_min(value: Any, min_value: str, field_type: str) -> bool:
     """Validate minimum value/length."""
+    # Handle date/time types with string comparison
+    date_time_types = ("date", "datetime-local", "time", "month", "week")
+    if field_type in date_time_types:
+        if not isinstance(value, str):
+            return False
+        try:
+            # Simple string comparison for date/time values
+            return value >= min_value
+        except (ValueError, TypeError):
+            return False
+    
     try:
         min_val = int(min_value)
     except (ValueError, TypeError):
@@ -95,27 +106,38 @@ def validate_min(value: Any, min_value: str, field_type: str) -> bool:
         return True
     
     # Handle text-like types for length validation
-    text_types = ("text", "textarea", "email", "password", "tel", "url", "search", "hidden", "string")
+    text_types = ("text", "textarea", "email", "password", "tel", "url", "search", "hidden")
     if field_type in text_types:
         return len(str(value)) >= min_val
-    elif field_type in ("number", "option", "range", "date", "datetime-local", "time", "month", "week", "checkbox", "radio"):
+    elif field_type == "number" or field_type == "range":
         try:
-            if field_type == "number":
-                num_val = float(value)
-            else:
-                # For option type, count selected values
-                if isinstance(value, list):
-                    num_val = len(value)
-                else:
-                    num_val = 1 if value else 0
+            num_val = float(value)
             return num_val >= min_val
         except (ValueError, TypeError):
             return False
+    elif field_type in ("option", "checkbox", "radio"):
+        # For option/checkbox/radio types, count selected values
+        if isinstance(value, list):
+            num_val = len(value)
+        else:
+            num_val = 1 if value else 0
+        return num_val >= min_val
     return True
 
 
 def validate_max(value: Any, max_value: str, field_type: str) -> bool:
     """Validate maximum value/length."""
+    # Handle date/time types with string comparison
+    date_time_types = ("date", "datetime-local", "time", "month", "week")
+    if field_type in date_time_types:
+        if not isinstance(value, str):
+            return False
+        try:
+            # Simple string comparison for date/time values
+            return value <= max_value
+        except (ValueError, TypeError):
+            return False
+    
     try:
         max_val = int(max_value)
     except (ValueError, TypeError):
@@ -123,22 +145,22 @@ def validate_max(value: Any, max_value: str, field_type: str) -> bool:
         return True
     
     # Handle text-like types for length validation
-    text_types = ("text", "textarea", "email", "password", "tel", "url", "search", "hidden", "string")
+    text_types = ("text", "textarea", "email", "password", "tel", "url", "search", "hidden")
     if field_type in text_types:
         return len(str(value)) <= max_val
-    elif field_type in ("number", "option", "range", "date", "datetime-local", "time", "month", "week", "checkbox", "radio"):
+    elif field_type == "number" or field_type == "range":
         try:
-            if field_type == "number":
-                num_val = float(value)
-            else:
-                # For option type, count selected values
-                if isinstance(value, list):
-                    num_val = len(value)
-                else:
-                    num_val = 1 if value else 0
+            num_val = float(value)
             return num_val <= max_val
         except (ValueError, TypeError):
             return False
+    elif field_type in ("option", "checkbox", "radio"):
+        # For option/checkbox/radio types, count selected values
+        if isinstance(value, list):
+            num_val = len(value)
+        else:
+            num_val = 1 if value else 0
+        return num_val <= max_val
     return True
 
 
@@ -194,6 +216,31 @@ def validate_accept(value: Any, accept_value: str, field_type: str) -> bool:
     return False
 
 
+def is_field_optional(field: InputField) -> bool:
+    """Check if field is optional based on validations."""
+    if not field.validations:
+        return False
+    
+    for validation in field.validations:
+        # Handle both ValidationRule objects and dicts
+        if isinstance(validation, dict):
+            if validation.get("validation") == "optional":
+                return True
+        else:
+            if validation.validation == "optional":
+                return True
+    return False
+
+
+def normalize_field_type(field_type: str) -> str:
+    """Normalize field type for backward compatibility."""
+    # Map old type names to new ones
+    type_mapping = {
+        "string": "text",
+    }
+    return type_mapping.get(field_type, field_type)
+
+
 def validate_field_value(value: Any, field: InputField) -> List[str]:
     """
     Validate a single field value against its schema definition.
@@ -207,34 +254,23 @@ def validate_field_value(value: Any, field: InputField) -> List[str]:
     """
     errors = []
     field_id = field.id
-    field_type = field.type
+    field_type = normalize_field_type(field.type)
     
-    # According to MIP-003: fields are required by default
-    # Use "optional" validation to make a field optional
-    is_optional = False
-    if field.validations:
-        for validation in field.validations:
-            if validation.validation == "optional":
-                # Check if optional value is "true" or truthy
-                opt_value = validation.value
-                if isinstance(opt_value, str):
-                    is_optional = opt_value.lower() in ("true", "1", "yes")
-                else:
-                    is_optional = bool(opt_value)
-                break
+    # Check if field is optional
+    is_optional = is_field_optional(field)
     
-    # Check required (if not optional)
+    # According to MIP-003: fields are required by default unless optional validation is set
     if not is_optional and not validate_required(value):
         errors.append(f"Field '{field_id}' is required")
         return errors  # Don't check other validations if required is missing
     
-    # If value is None/empty and optional, skip other validations
-    if is_optional and (value is None or (isinstance(value, str) and not value.strip())):
+    # If optional and value is empty/None, skip other validations
+    if is_optional and (value is None or (isinstance(value, str) and not value.strip()) or (isinstance(value, list) and len(value) == 0)):
         return errors
     
     # Type validation
     # Handle text-like types (text, textarea, email, password, tel, url, search, hidden)
-    text_types = ("text", "textarea", "email", "password", "tel", "url", "search", "hidden", "string")
+    text_types = ("text", "textarea", "email", "password", "tel", "url", "search", "hidden")
     if field_type in text_types and not isinstance(value, str):
         errors.append(f"Field '{field_id}' must be a string")
     elif field_type == "number":
@@ -245,13 +281,30 @@ def validate_field_value(value: Any, field: InputField) -> List[str]:
     elif field_type in ("boolean", "checkbox") and not isinstance(value, bool):
         errors.append(f"Field '{field_id}' must be a boolean")
     elif field_type == "option":
-        if field.data and field.data.values:
-            if isinstance(value, list):
-                invalid = [v for v in value if v not in field.data.values]
-                if invalid:
-                    errors.append(f"Field '{field_id}' contains invalid options: {invalid}")
-            elif value not in field.data.values:
-                errors.append(f"Field '{field_id}' must be one of: {', '.join(field.data.values)}")
+        # Option can be a string (single select) or list (multi-select)
+        if not isinstance(value, (str, list)):
+            errors.append(f"Field '{field_id}' must be a string or list")
+    elif field_type == "radio":
+        # Radio should be a string (single selection)
+        if not isinstance(value, str):
+            errors.append(f"Field '{field_id}' must be a string")
+    elif field_type in ("date", "datetime-local", "time", "month", "week"):
+        if not isinstance(value, str):
+            errors.append(f"Field '{field_id}' must be a string")
+    elif field_type == "range":
+        try:
+            float(value)
+        except (ValueError, TypeError):
+            errors.append(f"Field '{field_id}' must be a number")
+    elif field_type == "color":
+        if not isinstance(value, str):
+            errors.append(f"Field '{field_id}' must be a string")
+    elif field_type == "file":
+        if not isinstance(value, str):
+            errors.append(f"Field '{field_id}' must be a string (URL)")
+    elif field_type == "none":
+        # Display-only field, no validation needed
+        pass
     
     # Auto-validate format for email and url types (per MIP-003 spec)
     if field_type == "email" and isinstance(value, str):
@@ -261,29 +314,33 @@ def validate_field_value(value: Any, field: InputField) -> List[str]:
         if not validate_url(value):
             errors.append(f"Field '{field_id}' must be a valid URL")
     
-    # Apply validation rules
+    # Process validations array
     if field.validations:
-        for validation in field.validations:
-            validation_type = validation.validation
-            validation_value = validation.value
+        for validation_rule in field.validations:
+            # Handle both ValidationRule objects and dicts
+            if isinstance(validation_rule, dict):
+                validation_type = validation_rule.get("validation")
+                validation_value = validation_rule.get("value")
+            else:
+                validation_type = validation_rule.validation
+                validation_value = validation_rule.value
             
-            if validation_type == "format":
-                if not validate_format(value, validation_value):
-                    errors.append(f"Field '{field_id}' has invalid format (expected {validation_value})")
-            elif validation_type == "min":
+            if not validation_type or not validation_value:
+                continue
+            
+            if validation_type == "min":
                 if not validate_min(value, validation_value, field_type):
-                    errors.append(f"Field '{field_id}' is below minimum value of {validation_value}")
+                    errors.append(f"Field '{field_id}' must be at least {validation_value}")
             elif validation_type == "max":
                 if not validate_max(value, validation_value, field_type):
-                    errors.append(f"Field '{field_id}' exceeds maximum value of {validation_value}")
+                    errors.append(f"Field '{field_id}' must be at most {validation_value}")
+            elif validation_type == "format":
+                if not validate_format(value, validation_value):
+                    errors.append(f"Field '{field_id}' must match format: {validation_value}")
             elif validation_type == "accept":
                 if not validate_accept(value, validation_value, field_type):
-                    errors.append(f"Field '{field_id}' file type not accepted (expected: {validation_value})")
-            elif validation_type == "optional":
-                # Already checked above
-                pass
-            else:
-                logger.warning(f"Unknown validation type: {validation_type}")
+                    errors.append(f"Field '{field_id}' file type not accepted")
+            # "optional" validation is already handled above
     
     return errors
 
@@ -299,16 +356,6 @@ def validate_input_data(
         input_data: The input data to validate
         schema: The input schema definition (from /input_schema endpoint format)
                 Can be a dict with 'input_data' or 'input_groups', or already be InputSchemaResponse-like
-        
-    Raises:
-        ValidationError: If validation fails
-    """
-    """
-    Validate input data against an input schema.
-    
-    Args:
-        input_data: The input data to validate
-        schema: The input schema definition (from /input_schema endpoint format)
         
     Raises:
         ValidationError: If validation fails
@@ -346,6 +393,20 @@ def validate_input_data(
     field_objects = []
     for field_dict in fields_dict:
         if isinstance(field_dict, dict):
+            # Handle backward compatibility: if name is missing, use id as name
+            if "name" not in field_dict:
+                field_dict["name"] = field_dict.get("id", "Unnamed Field")
+            
+            # Convert validations from dicts to ValidationRule objects if needed
+            if "validations" in field_dict and field_dict["validations"]:
+                validation_list = []
+                for val in field_dict["validations"]:
+                    if isinstance(val, dict):
+                        validation_list.append(ValidationRule(**val))
+                    else:
+                        validation_list.append(val)
+                field_dict["validations"] = validation_list
+            
             field_objects.append(InputField(**field_dict))
         else:
             field_objects.append(field_dict)
@@ -365,23 +426,11 @@ def validate_input_data(
         errors.extend(field_errors)
     
     # Check for required fields that are missing
-    # According to MIP-003: fields are required by default unless marked as optional
+    # According to MIP-003: fields are required by default unless optional validation is set
     for field in field_objects:
-        is_optional = False
-        if field.validations:
-            for validation in field.validations:
-                if validation.validation == "optional":
-                    # Check if optional value is "true" or truthy
-                    opt_value = validation.value
-                    if isinstance(opt_value, str):
-                        is_optional = opt_value.lower() in ("true", "1", "yes")
-                    else:
-                        is_optional = bool(opt_value)
-                    break
-        
-        # Field is required if not optional and missing from input_data
-        if not is_optional and field.id not in input_data:
-            errors.append(f"Required field '{field.id}' is missing")
+        if field.id not in input_data:
+            if not is_field_optional(field):
+                errors.append(f"Required field '{field.id}' is missing")
     
     if errors:
         error_message = "Validation failed: " + "; ".join(errors)

@@ -173,8 +173,7 @@ def pattern4_dynamic_schema():
             base_schema["input_data"].append({
                 "id": "priority",
                 "type": "option",
-                "name": "Priority",
-                "data": {"values": ["normal", "urgent"]}
+                "name": "Priority"
             })
         
         return base_schema

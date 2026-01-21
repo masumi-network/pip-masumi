@@ -30,9 +30,8 @@ from .models import (
     ProvideInputRequest,
     DemoResponse,
     InputField,
-    InputFieldData,
-    ValidationRule,
-    InputGroup
+    InputGroup,
+    ValidationRule
 )
 
 __version__ = "0.1.41"
@@ -63,9 +62,8 @@ __all__ = [
     "ProvideInputRequest",
     "DemoResponse",
     "InputField",
-    "InputFieldData",
-    "ValidationRule",
     "InputGroup",
+    "ValidationRule",
     # CLI exports
     "run",
 ]
