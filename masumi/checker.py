@@ -330,8 +330,8 @@ class MasumiChecker:
             "https://payment.masumi.network/api/v1"
         )
 
-        base_url = payment_service_url.replace("/api/v1", "")
-        health_url = f"{base_url}/health"
+        # Keep /api/v1 and append /health
+        health_url = f"{payment_service_url}/health"
 
         try:
             async with aiohttp.ClientSession() as session:
@@ -346,7 +346,7 @@ class MasumiChecker:
                         return CheckResult(
                             passed=False,
                             message=f"Payment service error (status {response.status})",
-                            fix_hint=f"Check {base_url}",
+                            fix_hint=f"Check {health_url}",
                             level="warning"
                         )
         except (asyncio.TimeoutError, Exception) as e:
