@@ -79,10 +79,11 @@ class ColoredFormatter(logging.Formatter):
             name_str = display_name
         
         # Format: emoji LEVEL module: message
+        # Use explicit spacing: space before emoji, two spaces after emoji for visual separation
         if emoji:
-            formatted = f"{emoji} {level_str} {name_str}: {record.getMessage()}"
+            formatted = " " + emoji + "  " + level_str + " " + name_str + ": " + record.getMessage()
         else:
-            formatted = f"{level_str} {name_str}: {record.getMessage()}"
+            formatted = level_str + " " + name_str + ": " + record.getMessage()
         
         # Add exception info if present
         if record.exc_info:
@@ -109,6 +110,9 @@ def setup_logging(name, level=logging.INFO, use_colors=True, use_emojis=True):
     """
     logger_instance = logging.getLogger(name)
     logger_instance.setLevel(level)
+    
+    # Prevent propagation to parent loggers to avoid duplicate messages
+    logger_instance.propagate = False
     
     if not logger_instance.handlers:
         console_handler = logging.StreamHandler()

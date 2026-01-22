@@ -20,17 +20,21 @@ logger = setup_logging(__name__)
 
 
 def _configure_uvicorn_logging():
-    """Configure uvicorn loggers to use our beautiful formatter."""
+    """Configure uvicorn loggers to use our beautiful formatter and prevent duplication."""
     # Get uvicorn loggers
     uvicorn_logger = logging.getLogger("uvicorn")
     uvicorn_access = logging.getLogger("uvicorn.access")
     uvicorn_error = logging.getLogger("uvicorn.error")
     
-    # Remove default handlers
+    # Remove all existing handlers to prevent duplication
     for log in [uvicorn_logger, uvicorn_access, uvicorn_error]:
-        log.handlers.clear()
+        # Clear all handlers
+        while log.handlers:
+            log.removeHandler(log.handlers[0])
+        # Prevent propagation to root logger to avoid duplicate messages
+        log.propagate = False
     
-    # Create new handlers with our formatter
+    # Create a single shared handler with our formatter
     handler = logging.StreamHandler()
     formatter = ColoredFormatter(use_colors=True, use_emojis=True)
     handler.setFormatter(formatter)
@@ -40,10 +44,23 @@ def _configure_uvicorn_logging():
     uvicorn_access.setLevel(logging.WARNING)  # Suppress verbose HTTP access logs
     uvicorn_error.setLevel(logging.INFO)
     
-    # Add handlers
+    # Add handler to each logger
     uvicorn_logger.addHandler(handler)
     uvicorn_access.addHandler(handler)
     uvicorn_error.addHandler(handler)
+    
+    # Configure root logger to prevent duplicate messages
+    # Only modify if it has basicConfig-style handlers
+    root_logger = logging.getLogger()
+    if root_logger.handlers:
+        for h in root_logger.handlers[:]:
+            # Remove basic StreamHandlers that might cause duplication
+            # Keep FileHandlers and other custom handlers
+            if isinstance(h, logging.StreamHandler) and not isinstance(h, logging.FileHandler):
+                # Check if it's a default handler (no formatter or basic formatter)
+                if h.formatter is None or (isinstance(h.formatter, logging.Formatter) and 
+                                          h.formatter._fmt == logging.BASIC_FORMAT):
+                    root_logger.removeHandler(h)
 
 
 def _load_dotenv_if_available():
@@ -155,12 +172,14 @@ def run(
     print("=" * 70 + "\n")
     
     # Run server with cleaner logging
+    # Using log_config=None prevents uvicorn from adding default handlers
+    # Our _configure_uvicorn_logging() has already set up the handlers
     uvicorn.run(
         app, 
         host=host, 
         port=port, 
         log_level="info",
-        log_config=None  # Use our custom logging config
+        log_config=None  # Use our custom logging config (already configured above)
     )
 
 
