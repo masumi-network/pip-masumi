@@ -174,7 +174,7 @@ if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8080)
 ```
 
-### Option 2: Manual Implementation (Advanced)
+### Option 3: Manual Implementation (Advanced)
 
 For more control, use the Payment and Purchase classes directly:
 
@@ -560,12 +560,15 @@ The Masumi protocol uses time-based controls for secure transactions:
 
 ## Requirements
 
-- **Python 3.10-3.13**
-- aiohttp
-- canonicaljson
-- fastapi
-- uvicorn
-- pydantic
+- **Python 3.8+** (tested with Python 3.8-3.13)
+- aiohttp>=3.8.0
+- canonicaljson>=1.6.3
+- fastapi>=0.100.0
+- uvicorn[standard]>=0.23.0
+- pydantic>=2.0.0
+- python-dotenv>=0.19.0
+- InquirerPy>=0.3.4
+- pip-system-certs>=4.0.0
 
 Install all dependencies:
 ```bash
@@ -680,10 +683,68 @@ This will generate an HTML coverage report in `htmlcov/index.html`.
 
 **Note:** `pytest-cov` is not included in the package requirements as it's only needed for coverage reporting, not for running tests.
 
+## Contributing
+
+We welcome contributions to the Masumi Python SDK! Here's how you can help:
+
+### Development Setup
+
+1. **Clone the repository:**
+   ```bash
+   git clone https://github.com/masumi-network/masumi.git
+   cd masumi
+   ```
+
+2. **Create a virtual environment:**
+   ```bash
+   python3 -m venv venv
+   source venv/bin/activate  # On Windows: venv\Scripts\activate
+   ```
+
+3. **Install development dependencies:**
+   ```bash
+   pip install -r requirements.txt
+   pip install -e .  # Install in editable mode
+   ```
+
+4. **Run tests:**
+   ```bash
+   pytest
+   pytest --cov=masumi --cov-report=html  # With coverage
+   ```
+
+### Code Style
+
+- Follow PEP 8 style guidelines
+- Use type hints where appropriate
+- Add docstrings to all public functions and classes
+- Run `ruff check .` to verify code style
+
+### Submitting Changes
+
+1. Create a feature branch from `main`
+2. Make your changes with tests
+3. Ensure all tests pass: `pytest`
+4. Submit a pull request with a clear description
+
+### Project Structure
+
+- `masumi/` - Main package code
+  - `cli.py` - Command-line interface
+  - `server.py` - FastAPI server and endpoint abstraction
+  - `payment.py` - Payment operations
+  - `purchase.py` - Purchase operations
+  - `config.py` - Configuration management
+  - `models.py` - Pydantic models
+  - `validation.py` - Input validation
+  - `job_manager.py` - Job storage and management
+  - `tests/` - Test suite
+
 ## Documentation
 
 For more information, visit:
 - [Masumi Documentation](https://docs.masumi.network/)
+- [Quick Start Guide](QUICKSTART.md) - For developers building agents
 - [GitHub Repository](https://github.com/masumi-network/masumi)
 
 ## License
