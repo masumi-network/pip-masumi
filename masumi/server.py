@@ -358,7 +358,7 @@ class MasumiAgentServer:
     async def _handle_payment_confirmed(self, job_id: str, payment_id: str):
         """Handle payment confirmation - start background task for agent logic."""
         try:
-            logger.info(f"Payment {payment_id} confirmed for job {job_id}, starting agent logic...")
+            logger.info(f"Payment {payment_id[:8]}... confirmed for job {job_id}, starting agent logic...")
             
             # Update job status to running
             await self.job_manager.set_job_running(job_id)

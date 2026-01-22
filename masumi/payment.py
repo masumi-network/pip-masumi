@@ -207,19 +207,20 @@ class Payment:
         try:
             connector = aiohttp.TCPConnector()
             async with aiohttp.ClientSession(connector=connector) as session:
-                # Build query parameters
-                params = {
+                # Build request body
+                payload = {
                     'network': self.network,
-                    'blockchainIdentifier': blockchain_identifier
+                    'blockchainIdentifier': blockchain_identifier,
+                    'includeHistory': "false"
                 }
                 
                 url = f"{self.config.payment_service_url}/payment/resolve-blockchain-identifier"
-                logger.debug(f"Calling payment status endpoint: {url} with params: network={self.network}, blockchainIdentifier={blockchain_identifier[:8]}...")
+                logger.debug(f"Calling payment status endpoint: {url} with payload: network={self.network}, blockchainIdentifier={blockchain_identifier[:8]}...")
                 
-                async with session.get(
+                async with session.post(
                     url,
                     headers=self._headers,
-                    params=params
+                    json=payload
                 ) as response:
                     logger.debug(f"Payment status check response status: {response.status} for payment {blockchain_identifier}")
                     
@@ -313,7 +314,7 @@ class Payment:
             logger.error(f"Network error during payment completion: {str(e)}")
             raise
 
-    async def start_status_monitoring(self, callback=None, interval_seconds: int = 60) -> None:
+    async def start_status_monitoring(self, callback=None, interval_seconds: int = 10) -> None:
         """
         Start monitoring payment status at regular intervals.
         
@@ -325,7 +326,7 @@ class Payment:
                 The callback runs in a separate task to avoid blocking the monitoring loop.
                 If the callback fails, the payment will remain in tracking for retry on the next interval.
             interval_seconds (int, optional): Interval between status checks in seconds. 
-                                             Defaults to 60.
+                                             Defaults to 10.
         """
         if self._status_check_task is not None:
             logger.warning("Status monitoring already running, stopping previous task")
@@ -393,9 +394,9 @@ class Payment:
                             # Update last check time
                             payment_check_times[payment_id] = current_time
                             
-                            # Handle case where payment is not found
+                            # Handle case where payment is not found or has error status
                             if result.get("status") == "error" or not result.get("data"):
-                                logger.warning(f"Payment {payment_id[:8]}... not found or error, will retry next interval")
+                                logger.info(f"Payment {payment_id[:8]}... awaiting on-chain settlement (this is normal). Will check again in {interval_seconds} seconds")
                                 failed_checks += 1
                                 continue
                             
@@ -403,6 +404,12 @@ class Payment:
                             payment = result.get("data", {})
                             on_chain_state = payment.get("onChainState")
                             next_action = payment.get("NextAction", {}).get("requestedAction")
+                            
+                            # Handle case where payment exists but hasn't settled on-chain yet (onChainState is null)
+                            if on_chain_state is None:
+                                logger.info(f"Payment {payment_id[:8]}... awaiting on-chain settlement (this is normal). Will check again in {interval_seconds} seconds")
+                                continue
+                            
                             logger.debug(f"Payment {payment_id[:8]}...: state={on_chain_state}, action={next_action}")
                             
                             # Trigger callback ONLY when payment is ready to process (FundsLocked)
