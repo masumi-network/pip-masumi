@@ -9,7 +9,7 @@ if os.path.exists("README.md"):
 
 setup(
     name="masumi",
-    version="0.1.41",
+    version="1.0.0",
     packages=find_packages(),
     package_dir={'masumi': 'masumi'},
     install_requires=[
