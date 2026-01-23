@@ -9,7 +9,7 @@ if os.path.exists("README.md"):
 
 setup(
     name="masumi",
-    version="1.0.0",
+    version="2.0.0",
     packages=find_packages(),
     package_dir={'masumi': 'masumi'},
     install_requires=[
@@ -24,18 +24,38 @@ setup(
         "InquirerPy>=0.3.4",
         "pip-system-certs>=4.0.0",
     ],
+    extras_require={
+        "langchain": [
+            "langchain>=1.0.0,<2.0.0",
+            "langchain-openai>=0.1.0",
+        ],
+        "crewai": [
+            "crewai>=1.0.0,<2.0.0",
+            "pyyaml>=6.0",
+        ],
+        "ai": [
+            "langchain>=1.0.0,<2.0.0",
+            "langchain-openai>=0.1.0",
+            "crewai>=1.0.0,<2.0.0",
+            "pyyaml>=6.0",
+        ],
+    },
     author="Patrick Tobler",
     author_email="patrick@nmkr.io",
-    description="Masumi Payment Module for Cardano blockchain integration",
+    description="Masumi Payment Module for Cardano blockchain integration with optional AI framework support (LangChain, CrewAI)",
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://github.com/masumi-network/masumi",
     classifiers=[
         "Programming Language :: Python :: 3",
+        "Programming Language :: Python :: 3.10",
+        "Programming Language :: Python :: 3.11",
+        "Programming Language :: Python :: 3.12",
+        "Programming Language :: Python :: 3.13",
         "License :: OSI Approved :: MIT License",
         "Operating System :: OS Independent",
     ],
-    python_requires=">=3.8",
+    python_requires=">=3.10,<3.14",
     entry_points={
         "console_scripts": [
             "masumi=masumi.cli:main",
