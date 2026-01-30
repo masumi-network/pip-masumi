@@ -662,21 +662,6 @@ A Masumi agent project with LangChain integration and tool calling, generated wi
    masumi run main.py --standalone --input '{{"text": "Hello"}}'
    ```
 
-## Architecture
-
-```mermaid
-graph TD
-    A[User Request] --> B[Masumi API]
-    B --> C[process_job function]
-    C --> D[LangChain Agent]
-    D --> E{{Tool Needed?}}
-    E -->|Yes| F[Execute Tool]
-    F --> G[Custom Tools]
-    G --> D
-    E -->|No| I[LLM Response]
-    I --> J[Return Result]
-```
-
 ## Configuration
 
 ### Required Environment Variables
@@ -704,12 +689,12 @@ graph TD
 
 **Agent Configuration:**
 - `MAX_ITERATIONS`: Max tool calling iterations (default: 5)
-- `LOG_LEVEL`: DEBUG, INFO, WARNING, ERROR (default: INFO)
 
 **Masumi Configuration:**
 - `PAYMENT_SERVICE_URL`: Payment service URL (must end with /api/v1)
 - `NETWORK`: 'Preprod' or 'Mainnet' (default: 'Preprod')
 - `PORT`: Port to bind to (default: 8080)
+- `LOG_LEVEL`: DEBUG, INFO, WARNING, ERROR (default: INFO)
 
 ## Project Structure
 
@@ -764,7 +749,6 @@ This scaffold uses the **tool calling agent pattern** (recommended):
 2. **Add custom tools in `tools/custom_tools.py`:**
    ```python
    from langchain_core.tools import tool
-   # from langchain_community.tools import DuckDuckGoSearchRun
    
    @tool
    def my_custom_tool(input: str) -> str:
@@ -826,9 +810,9 @@ OPENAI_API_KEY=your_openai_api_key_here
 
 The `process_job()` function in `agent.py` integrates LangChain with Masumi's endpoint abstraction:
 
-- **Input:** `{{"text": "..."}}` (matches INPUT_SCHEMA)
+- **Input:** `{{"text": "Your input here"}}` (matches INPUT_SCHEMA)
 - **Process:** LangChain agent with tool calling
-- **Output:** `{{"status": "completed", "result": "..."}}`
+- **Output:** `{{"status": "completed", "result": "Your result here"}}`
 
 This allows your LangChain agent to work seamlessly with Masumi's payment and API infrastructure.
 
@@ -839,11 +823,8 @@ This allows your LangChain agent to work seamlessly with Masumi's payment and AP
 Perfect for testing without Masumi setup:
 
 ```bash
-# Set only LLM API key in .env
-OPENAI_API_KEY=your_key_here
-
 # Test the agent
-masumi run main.py --standalone --input '{{"text": "Hello"}}'
+masumi run main.py --standalone --input '{{"text": "Your input here"}}'
 ```
 
 ### Running in API Mode (Production)
@@ -851,12 +832,6 @@ masumi run main.py --standalone --input '{{"text": "Hello"}}'
 Requires Masumi credentials:
 
 ```bash
-# Set all required env vars in .env
-AGENT_IDENTIFIER=your_agent_id
-PAYMENT_API_KEY=your_payment_key
-SELLER_VKEY=your_seller_key
-OPENAI_API_KEY=your_openai_key
-
 # Run the server
 masumi run
 # Server starts on http://0.0.0.0:8080
@@ -866,7 +841,7 @@ masumi run
 
 Enable debug logging:
 ```bash
-# In .env
+# In .env file
 LOG_LEVEL=DEBUG
 ```
 
@@ -931,7 +906,7 @@ PORT=8081 masumi run
 
 4. 🧪 **Test locally:** Use standalone mode to test your agent
    ```bash
-   masumi run main.py --standalone --input '{{"text": "test input"}}'
+   masumi run main.py --standalone --input '{{"text": "Your input here"}}'
    ```
 
 5. 🚀 **Deploy:** Set up Masumi credentials and deploy
@@ -1263,49 +1238,65 @@ A Masumi agent project with CrewAI integration, generated with `masumi init`.
 1. **Install dependencies:**
    ```bash
    pip install -r requirements.txt
-   # Or: pip install masumi[crewai]
    ```
    Requirements include `langgraph` and `litellm` (needed for CrewAI).
 
 2. **Configure environment:**
    ```bash
    cp .env.example .env
-   # Set one LLM key: GROQ_API_KEY (recommended), OPENAI_API_KEY, or ANTHROPIC_API_KEY
-   # Plus Masumi: AGENT_IDENTIFIER, PAYMENT_API_KEY, SELLER_VKEY
+   # Edit .env with your actual values:
+   # - Set ONE LLM API key: OPENAI_API_KEY, GROQ_API_KEY, or ANTHROPIC_API_KEY
+   # - For API mode: AGENT_IDENTIFIER, PAYMENT_API_KEY, SELLER_VKEY 
    ```
 
-3. **Run the agent:**
+3. **Implement your crew logic:**
+   - Edit `config/agents.yaml` to define your agents (role, goal, backstory)
+   - Edit `config/tasks.yaml` to define your tasks (description, expected_output)
+   - Customize `crew.py` if needed (process type, tools, knowledge base)
+   - Add custom tools in `tools/custom_tools.py` if needed
+
+4. **Run the agent:**
    ```bash
    # API mode (default) - runs as FastAPI server
    masumi run                    # Runs main.py
    masumi run main.py           # Or specify explicitly
    
-   # Standalone mode - executes job directly
-   masumi run main.py --standalone --input '{{"topic": "Artificial Intelligence"}}'
+   # Standalone mode - test locally without API server
+   masumi run main.py --standalone --input '{{"topic": "...your topic..."}}'
    ```
 
 ## Configuration
 
 ### Required Environment Variables
 
-**Masumi:**
-- `AGENT_IDENTIFIER`: Your agent ID (get it after registering on Masumi network)
-- `PAYMENT_API_KEY`: Your payment API key
-- `SELLER_VKEY`: Your seller wallet verification key
+**For Standalone Testing (LLM only):**
+- **ONE** of the following LLM API keys:
+  - `OPENAI_API_KEY` - Get from https://platform.openai.com/api-keys
+  - `GROQ_API_KEY` - Get from https://console.groq.com/keys (free tier available)
+  - `ANTHROPIC_API_KEY` - Get from https://console.anthropic.com/
 
-**CrewAI (set one):**
-- `GROQ_API_KEY`: Groq API key (recommended for quick start)
-- `OPENAI_API_KEY`: OpenAI API key
-- `ANTHROPIC_API_KEY`: Anthropic API key
-
-If none is set, the agent will raise a clear error asking you to set one of these.
+**For API Mode:**
+- All Masumi variables:
+  - `AGENT_IDENTIFIER`: Your agent ID (get after registering on Masumi network)
+  - `PAYMENT_API_KEY`: Your payment API key
+  - `SELLER_VKEY`: Your seller wallet verification key
+- **ONE** LLM API key (as above)
 
 ### Optional Environment Variables
 
-- `SERPER_API_KEY`: For search tools
-- `PAYMENT_SERVICE_URL`: Payment service URL (defaults to production)
-- `NETWORK`: Network to use - 'Preprod' or 'Mainnet' (defaults to 'Preprod')
-- `PORT`: Port to bind to (defaults to 8080)
+**LLM Configuration:**
+- `OPENAI_MODEL`: Model name (default: gpt-3.5-turbo)
+- `GROQ_MODEL`: Model name (default: llama-3.3-70b-versatile)
+- `ANTHROPIC_MODEL`: Model name (default: claude-3-sonnet-20240229)
+- `TEMPERATURE`: 0.0-1.0 (default: 0.7 for OpenAI/Anthropic, 0.8 for Groq)
+
+### Optional Environment Variables
+
+**Masumi Configuration:**
+- `PAYMENT_SERVICE_URL`: Payment service URL (must end with /api/v1)
+- `NETWORK`: 'Preprod' or 'Mainnet' (default: 'Preprod')
+- `PORT`: Port to bind to (default: 8080)
+- `LOG_LEVEL`: DEBUG, INFO, WARNING, ERROR (default: INFO)
 
 ## Project Structure
 
@@ -1328,6 +1319,31 @@ If none is set, the agent will raise a clear error asking you to set one of thes
 ```
 
 ## CrewAI Integration
+
+### How CrewAI Works
+
+CrewAI uses a **multi-agent crew pattern**:
+- **Agents** are specialized workers with roles, goals, and backstories
+- **Tasks** are assigned to specific agents and executed sequentially
+- **Crew** orchestrates the workflow, managing agent collaboration
+- Agents can use **tools** to perform actions (search, API calls, etc.)
+- Tasks can reference outputs from previous tasks
+
+**How it works:**
+1. User sends input → `process_job()` receives it
+2. Input data is extracted and used to format task descriptions (using placeholders like `{{topic}}`)
+3. Crew kicks off with `crew.kickoff()`
+4. Agents execute tasks sequentially, each agent working on assigned tasks
+5. Each agent can use tools to gather information or perform actions
+6. Task outputs are passed to subsequent tasks
+7. Final result is returned with all agent outputs incorporated
+
+**Benefits:**
+- **Specialized agents:** Each agent has a clear role and expertise
+- **Sequential workflow:** Tasks execute in order, building on previous work
+- **Tool integration:** Agents can use tools for real-world actions
+- **YAML configuration:** Easy to modify agents and tasks without code changes
+- **Scalable:** Add more agents and tasks as your needs grow
 
 ### Configuring Agents
 
@@ -1359,9 +1375,9 @@ tasks:
 ```
 
 Each task needs:
-- `description`: What the task should do (can use {{topic}} placeholders)
+- `description`: What the task should do (can use `{{topic}}` or other placeholders)
 - `expected_output`: What the task should produce
-- `agent`: Which agent should handle this task
+- `agent`: Which agent should handle this task (must match role in agents.yaml)
 
 Tasks execute sequentially, so later tasks can use outputs from earlier tasks.
 
@@ -1369,9 +1385,15 @@ Tasks execute sequentially, so later tasks can use outputs from earlier tasks.
 
 Modify `crew.py` to:
 - Change the process type (sequential, hierarchical, etc.)
-- Add custom tools
+- Add custom tools to agents
 - Configure different LLM providers
-- Add knowledge base integration
+- Add knowledge base integration for RAG
+- Customize agent behavior and tool assignments
+
+**Process Types:**
+- `Process.sequential`: Tasks execute one after another (default)
+- `Process.hierarchical`: Manager agent coordinates other agents
+- Custom processes: Define your own workflow logic
 
 ### Adding Custom Tools
 
@@ -1381,7 +1403,9 @@ Modify `crew.py` to:
    
    @tool("My Custom Tool")
    def my_tool(input: str) -> str:
-       # Your tool logic
+       \"\"\"Tool description for the agent - be specific about what it does.\"\"\"
+       # Your tool logic here
+       # Can call APIs, databases, perform calculations, etc.
        return result
    ```
 
@@ -1391,62 +1415,184 @@ Modify `crew.py` to:
    
    agent = Agent(
        role="...",
-       tools=[my_tool]
+       tools=[my_tool]  # Add tools here
    )
    ```
+   
+   **Tool Tips:**
+   - Write clear docstrings - agents use these to decide when to use tools
+   - Tools should be idempotent when possible
+   - Handle errors gracefully and return informative error messages
+   - Use type hints for better tool schema generation
+   - Import tools from `crewai_tools` for common use cases (web search, file operations, etc.)
 
 ### Using Different LLM Providers
 
-To use providers other than OpenAI:
+The scaffold automatically detects which provider to use based on environment variables (priority: OpenAI > Groq > Anthropic).
 
-1. Install the provider package:
-   ```bash
-   pip install anthropic  # For Anthropic
-   ```
+**To use Groq (fast, free-tier):**
+```bash
+# Install Groq package (if not already included)
+pip install groq
 
-2. Set environment variable:
-   ```
-   ANTHROPIC_API_KEY=your_key_here
-   ```
+# Set in .env
+GROQ_API_KEY=your_groq_api_key_here
+# Optionally: GROQ_MODEL=llama-3.3-70b-versatile
+```
 
-3. CrewAI will automatically use the available provider.
+**To use Anthropic:**
+```bash
+# Install Anthropic package (if not already included)
+pip install anthropic
+
+# Set in .env
+ANTHROPIC_API_KEY=your_anthropic_api_key_here
+# Optionally: ANTHROPIC_MODEL=claude-3-sonnet-20240229
+```
+
+**To use OpenAI (default):**
+```bash
+# Already installed
+# Set in .env
+OPENAI_API_KEY=your_openai_api_key_here
+# Optionally: OPENAI_MODEL=gpt-3.5-turbo
+```
+
+CrewAI will automatically use the available provider through LiteLLM.
 
 ## Masumi Integration
 
 The `process_job()` function in `crew.py` integrates CrewAI with Masumi's endpoint abstraction:
 
-- Accepts `identifier_from_purchaser: str, input_data: dict` (Masumi format)
-- Extracts input from `input_data`
-- Formats tasks with input data (using placeholders like {{topic}})
-- Invokes `crew.kickoff()`
-- Returns JSON-serializable result
+- **Input:** `{{"topic": "Your topic here"}}` (matches INPUT_SCHEMA)
+- **Process:** CrewAI crew executes tasks sequentially with assigned agents
+- **Output:** `{{"status": "completed", "result": "Your result here"}}`
+
+**How it works:**
+1. `process_job()` receives Masumi input format
+2. Extracts input data and formats task descriptions with placeholders
+3. Crew kicks off with `crew.kickoff()`
+4. Agents execute tasks in sequence
+5. Final result is returned in Masumi-compatible format
 
 This allows your CrewAI crew to work seamlessly with Masumi's payment and API infrastructure.
 
 ## Development
 
-### Running Locally
+### Running Locally (Standalone Mode)
 
-1. Set up your `.env` file with test values
-2. Run in standalone mode for testing:
+Perfect for testing without Masumi setup:
+
+```bash
+# Test the crew
+masumi run main.py --standalone --input '{{"topic": "...your topic..."}}'
+```
+
+This runs the crew directly without starting the API server, useful for:
+- Testing agent behavior
+- Debugging task execution
+- Validating YAML configurations
+- Iterating on prompts and tools
+
+### Running in API Mode (Production)
+
+Requires Masumi credentials:
+
+```bash
+# Run the server
+masumi run
+# Server starts on http://0.0.0.0:8080
+```
+
+
+## Troubleshooting
+
+### "No LLM API key found"
+- Set ONE of: `OPENAI_API_KEY`, `GROQ_API_KEY`, or `ANTHROPIC_API_KEY` in `.env`
+
+### "Agent 'X' not found for task"
+- Check that agent role names in `tasks.yaml` exactly match role names in `agents.yaml`
+- Verify YAML syntax is correct (indentation, quotes, etc.)
+
+### "YAML parsing error"
+- Check YAML syntax in `config/agents.yaml` and `config/tasks.yaml`
+- Ensure proper indentation (2 spaces, not tabs)
+- Verify all required fields are present (role, goal, backstory for agents; description, expected_output, agent for tasks)
+
+### Crew execution errors
+- Check logs for specific agent or task failures
+- Verify LLM API key is correct and has sufficient credits
+- Ensure input data format matches expected schema
+- Check that task placeholders (like `{{topic}}`) match input data keys
+
+### Payment service errors
+- Verify `PAYMENT_SERVICE_URL` ends with `/api/v1`
+- Ensure URL matches your payment service instance (not generic default)
+- Check that `PAYMENT_API_KEY` matches the service URL
+
+### Port already in use
+```bash
+# Find and kill process on port 8080
+lsof -ti:8080 | xargs kill -9
+
+# Or use different port
+PORT=8081 masumi run
+```
+
+### CrewAI/LangGraph compatibility issues
+- Ensure Python version is 3.10-3.13 (CrewAI requirement)
+- Update dependencies: `pip install --upgrade crewai langgraph litellm`
+- Check CrewAI documentation for breaking changes in your version
+
+## Provider Comparison
+
+| Provider | Speed | Cost | Best For |
+|----------|-------|------|----------|
+| **Groq** | ⚡ Very Fast | 🆓 Free tier | Fast responses, testing |
+| **OpenAI** | ⚡ Fast | 💰 Paid | Production, reliability |
+| **Anthropic** | ⚡ Fast | 💰 Paid | Quality, safety |
+
+**Recommendation:** Start with Groq for testing (free), switch to OpenAI/Anthropic for production.
+
+## Next Steps
+
+1. 🔧 **Configure agents:** Edit `config/agents.yaml` to define your specialized agents
+   - Add roles that match your use case
+   - Write clear goals and detailed backstories
+   - Set `allow_delegation` appropriately
+
+2. 📋 **Define tasks:** Edit `config/tasks.yaml` to create your workflow
+   - Use placeholders like `{{topic}}` for dynamic content
+   - Assign tasks to appropriate agents
+   - Order tasks logically (later tasks can use earlier outputs)
+
+3. 🛠️ **Add tools:** Create custom tools in `tools/custom_tools.py` if needed
+   - Use `@tool` decorator from `crewai_tools`
+   - Import tools from `crewai_tools` for common use cases
+   - Add tools to agents in `crew.py`
+
+4. ⚙️ **Customize crew:** Modify `crew.py` for advanced configurations
+   - Change process type (sequential, hierarchical, etc.)
+   - Add knowledge base integration for RAG
+   - Configure custom LLM settings
+
+5. 🧪 **Test locally:** Use standalone mode to test your crew
    ```bash
-   masumi run main.py --standalone --input '{{"topic": "AI"}}'
+   masumi run main.py --standalone --input '{{"topic": "...your topic..."}}'
    ```
 
-### Deploying
-
-1. Register your agent on the Masumi network
-2. Get your `AGENT_IDENTIFIER`, `PAYMENT_API_KEY`, and `SELLER_VKEY`
-3. Set environment variables in your deployment environment
-4. Run the agent in API mode:
-   ```bash
-   masumi run
-   ```
+6. 🚀 **Deploy:** Set up Masumi credentials and deploy
+   - Register on Masumi network
+   - Set environment variables
+   - Run in API mode: `masumi run`
 
 ## Documentation
 
 - [Masumi Documentation](https://docs.masumi.network)
 - [CrewAI Documentation](https://docs.crewai.com)
+- [CrewAI Agents Guide](https://docs.crewai.com/concepts/agents)
+- [CrewAI Tasks Guide](https://docs.crewai.com/concepts/tasks)
+- [CrewAI Tools Guide](https://docs.crewai.com/concepts/tools)
 - [Masumi CLI Help](https://github.com/masumi-network/pip-masumi)
 
 ## License

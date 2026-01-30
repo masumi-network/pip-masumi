@@ -31,7 +31,7 @@ The Masumi SDK provides:
 
 ```bash
 # Create a virtual environment
-python3 -m venv venv
+python -m venv venv
 
 # Activate it (Linux/macOS)
 source venv/bin/activate
