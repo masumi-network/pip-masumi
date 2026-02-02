@@ -24,16 +24,12 @@ Required environment variables for API mode:
 
 import os
 from masumi import run
+from masumi.helper_functions import setup_logging, get_log_level
 
 # Note: .env files are automatically loaded by masumi.run() from the current directory
 
 # Configure logging
-import logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger(__name__)
+logger = setup_logging(__name__, level=get_log_level())
 
 
 # ─────────────────────────────────────────────────────────────────────────────
