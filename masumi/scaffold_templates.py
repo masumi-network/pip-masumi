@@ -169,6 +169,7 @@ A Masumi agent project generated with `masumi init`.
 - `PAYMENT_SERVICE_URL`: Payment service URL (defaults to production)
 - `NETWORK`: Network to use - 'Preprod' or 'Mainnet' (defaults to 'Preprod')
 - `PORT`: Port to bind to (defaults to 8080)
+- `LOG_LEVEL`: Logging level - DEBUG, INFO, WARNING, ERROR, CRITICAL (defaults to INFO)
 """
     
     readme += """
@@ -299,13 +300,10 @@ from langchain_core.messages import HumanMessage, AIMessage, ToolMessage
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from tools.custom_tools import get_tools
 from config.prompts import SYSTEM_PROMPT
+from masumi.helper_functions import setup_logging, get_log_level
 
 # Configure logging
-logging.basicConfig(
-    level=os.getenv("LOG_LEVEL", "INFO").upper(),
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger(__name__)
+logger = setup_logging(__name__, level=get_log_level())
 
 
 def _initialize_llm():
@@ -377,13 +375,6 @@ async def process_job(identifier_from_purchaser: str, input_data: Dict[str, Any]
         return {{
             "status": "error",
             "error": error_msg,
-            "identifier": identifier_from_purchaser
-        }}
-    
-    if agent_chain is None:
-        return {{
-            "status": "error",
-            "error": "Agent chain not initialized. Check logs for initialization errors.",
             "identifier": identifier_from_purchaser
         }}
     
@@ -947,13 +938,10 @@ import yaml
 import logging
 from pathlib import Path
 from crewai import Agent, Task, Crew, Process, LLM
+from masumi.helper_functions import setup_logging, get_log_level
 
 # Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger(__name__)
+logger = setup_logging(__name__, level=get_log_level())
 
 
 def _create_llm() -> LLM:
@@ -1618,7 +1606,7 @@ def _scaffold_simple_python(
     imports_list = [
         "import os",
         "from masumi import run, Config",
-        "import logging",
+        "from masumi.helper_functions import setup_logging, get_log_level",
     ]
     
     # Build agent.py template (agent logic)
@@ -1634,11 +1622,7 @@ def _scaffold_simple_python(
         "\n".join(imports_list),
         "",
         "# Configure logging",
-        "logging.basicConfig(",
-        "    level=logging.INFO,",
-        "    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'",
-        ")",
-        "logger = logging.getLogger(__name__)",
+        "logger = setup_logging(__name__, level=get_log_level())",
         "",
         "# Define agent logic",
         process_job_code,

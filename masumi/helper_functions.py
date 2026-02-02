@@ -92,6 +92,33 @@ class ColoredFormatter(logging.Formatter):
         return formatted
 
 
+# Log level mapping from string to logging constant
+LOG_LEVEL_MAP = {
+    "DEBUG": logging.DEBUG,
+    "INFO": logging.INFO,
+    "WARNING": logging.WARNING,
+    "ERROR": logging.ERROR,
+    "CRITICAL": logging.CRITICAL,
+}
+
+
+def get_log_level(level_str: str = None) -> int:
+    """
+    Get logging level from LOG_LEVEL environment variable or provided string.
+    
+    Args:
+        level_str: Optional logging level string. If not provided, reads from LOG_LEVEL env var.
+    
+    Returns:
+        int: Logging level constant (defaults to logging.INFO if invalid or not set)
+    """
+    if level_str is None:
+        level_str = os.getenv("LOG_LEVEL", "INFO")
+    
+    level_str = level_str.upper()
+    return LOG_LEVEL_MAP.get(level_str, logging.INFO)
+
+
 def setup_logging(name, level=logging.INFO, use_colors=True, use_emojis=True):
     """
     Centralized logging configuration for Masumi modules.
@@ -101,13 +128,17 @@ def setup_logging(name, level=logging.INFO, use_colors=True, use_emojis=True):
     
     Args:
         name: Logger name (typically __name__ of the calling module)
-        level: Logging level (default: logging.INFO)
+        level: Logging level (default: logging.INFO). Can be int or string (will be converted).
         use_colors: Whether to use colors (default: True, auto-detects TTY)
         use_emojis: Whether to use emojis for log levels (default: True)
     
     Returns:
         logging.Logger: Configured logger instance
     """
+    # Convert string level to int if needed
+    if isinstance(level, str):
+        level = get_log_level(level)
+    
     logger_instance = logging.getLogger(name)
     logger_instance.setLevel(level)
     
