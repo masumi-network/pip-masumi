@@ -12,7 +12,7 @@
 from masumi import run
 
 async def process_job(identifier: str, input_data: dict):
-    return {"result": input_data["text"].upper()}
+    return input_data["text"].upper()
 
 run(process_job, INPUT_SCHEMA)  # That's it! 🎉
 ```
@@ -88,6 +88,8 @@ masumi run agent.py --standalone --input '{"text": "Hello"}'
 **Example agent file (`agent.py`):**
 
 > **Note:** Input schemas follow MIP-003 Attachment 01. See [Schema Validator docs](https://docs.masumi.network/documentation/technical-documentation/schema-validator-component) for validation rules.
+> 
+> **Important:** Your `process_job` function should return a **string**, not a dict. The SDK automatically wraps the result in the response format with `id`, `status`, and `result` fields.
 
 ```python
 #!/usr/bin/env python3
@@ -97,7 +99,7 @@ from masumi import run
 # Define agent logic
 async def process_job(identifier_from_purchaser: str, input_data: dict):
     text = input_data.get("text", "")
-    return {"result": text.upper()}
+    return text.upper()  # Return a string, not a dict
 
 # Define input schema
 INPUT_SCHEMA = {
@@ -251,6 +253,7 @@ server = MasumiAgentServer(
 @server.start_job
 async def my_agent_logic(identifier_from_purchaser: str, input_data: dict):
     # Your agent logic here
+    # Return a string - the SDK handles response formatting
     return result
 
 @server.input_schema
@@ -543,6 +546,75 @@ output_hash = create_masumi_output_hash("work completed", "purchaser_id")
 output_string = json.dumps({"result": "completed"}, separators=(",", ":"), ensure_ascii=False)
 output_hash = create_masumi_output_hash(output_string, "purchaser_id")
 ```
+
+### Human-in-the-Loop (HITL)
+
+Request human input during job execution to pause and resume workflows. This is useful for approvals, additional information, or manual review steps.
+
+**Basic Usage:**
+
+```python
+from masumi.hitl import request_input
+
+async def process_job(identifier_from_purchaser: str, input_data: dict):
+    # Do some automated work
+    result = process_data(input_data)
+    
+    # Request human approval before proceeding
+    approval = await request_input(
+        {
+            "input_data": [
+                {
+                    "id": "approve",
+                    "type": "boolean",
+                    "name": "Approve Result",
+                    "data": {
+                        "description": f"Approve this result: {result}"
+                    }
+                }
+            ]
+        },
+        message="Please review and approve the result"
+    )
+    
+    if approval.get("approve"):
+        return result
+    else:
+        return "Processing was rejected"
+```
+
+**How It Works:**
+
+1. When `request_input()` is called, execution pauses and the job status is set to `awaiting_input`
+2. The `/status` endpoint returns the input schema so clients know what input is needed
+3. A human provides input via the `/provide_input` endpoint
+4. Execution resumes automatically and `request_input()` returns with the provided data
+5. Your agent logic continues with the input
+
+**Testing HITL:**
+
+1. Start your agent: `masumi run`
+2. Create a job via `/start_job` endpoint
+3. Check status: `GET /status?job_id=<id>` → shows `awaiting_input` with input schema
+4. Provide input: `POST /provide_input` with `{"job_id": "<id>", "input_data": {"approve": true}}`
+5. Job resumes and completes
+
+**Example: Request Multiple Fields:**
+
+```python
+config = await request_input({
+    "input_data": [
+        {"id": "style", "type": "option", "name": "Style", "data": {"values": ["formal", "casual"]}},
+        {"id": "tone", "type": "text", "name": "Tone", "data": {"placeholder": "Enter tone"}}
+    ]
+})
+
+# Use the provided configuration
+style = config.get("style")
+tone = config.get("tone")
+```
+
+**Note:** The default `provide_input_handler` is automatically configured. You can override it by providing a custom handler to `create_masumi_app()` or `masumi.run()`.
 
 ## Time-based Transaction Flow
 

@@ -125,6 +125,20 @@ class ProvideInputRequest(BaseModel):
         }
 
 
+class ProvideInputResponse(BaseModel):
+    """Response model for /provide_input endpoint"""
+    input_hash: str = Field(..., description="Hash of the provided input data")
+    signature: str = Field(default="", description="Signature for the input (optional, empty string if not used)")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "input_hash": "a87ff679a2f3e71d9181a67b7542122c",
+                "signature": ""
+            }
+        }
+
+
 class AvailabilityResponse(BaseModel):
     """Response model for /availability endpoint"""
     status: str = Field(..., description="Server status (available or unavailable)")
