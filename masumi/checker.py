@@ -256,19 +256,51 @@ class MasumiChecker:
         results = []
 
         # Required variables with validation
-        required_vars = ["AGENT_IDENTIFIER", "PAYMENT_API_KEY", "SELLER_VKEY"]
-        missing = []
+        # AGENT_IDENTIFIER is a warning (server can start without it, but needed for full functionality)
+        # PAYMENT_API_KEY and SELLER_VKEY are required (errors)
+        required_vars = ["PAYMENT_API_KEY", "SELLER_VKEY"]
+        missing_required = []
+        agent_identifier_missing = False
+        agent_identifier_invalid = False
 
+        # Check AGENT_IDENTIFIER separately (as warning)
+        agent_identifier_value = os.getenv("AGENT_IDENTIFIER")
+        if agent_identifier_value and agent_identifier_value.strip():
+            is_valid, error_msg = validate_agent_identifier(agent_identifier_value)
+            if is_valid:
+                display_value = f"{agent_identifier_value[:4]}...{agent_identifier_value[-4:]}" if len(agent_identifier_value) > 10 else "***"
+                results.append(CheckResult(
+                    passed=True,
+                    message=f"AGENT_IDENTIFIER set ({display_value})",
+                    level="info"
+                ))
+            else:
+                agent_identifier_invalid = True
+                results.append(CheckResult(
+                    passed=False,
+                    message=f"AGENT_IDENTIFIER format invalid: {error_msg}",
+                    fix_hint="You must register your agent and get the agent identifier from the admin interface in order to run the agent properly.",
+                    level="warning"
+                ))
+        else:
+            agent_identifier_missing = True
+            results.append(CheckResult(
+                passed=False,
+                message="AGENT_IDENTIFIER not set",
+                fix_hint="You must register your agent and get the agent identifier from the admin interface in order to run the agent properly.",
+                level="warning"
+            ))
+
+        # Check required variables (errors)
         for var_name in required_vars:
             value = os.getenv(var_name)
-            if value:
+            # Check if value is None, empty string, or only whitespace
+            if value and value.strip():
                 # Validate format based on variable type
                 is_valid = True
                 error_msg = None
                 
-                if var_name == "AGENT_IDENTIFIER":
-                    is_valid, error_msg = validate_agent_identifier(value)
-                elif var_name == "PAYMENT_API_KEY":
+                if var_name == "PAYMENT_API_KEY":
                     is_valid, error_msg = validate_payment_api_key(value)
                 elif var_name == "SELLER_VKEY":
                     is_valid, error_msg = validate_seller_vkey(value)
@@ -290,26 +322,40 @@ class MasumiChecker:
                         level="error"
                     ))
             else:
-                missing.append(var_name)
+                missing_required.append(var_name)
 
-        if missing:
+        if missing_required:
             results.append(CheckResult(
                 passed=False,
-                message=f"Missing: {', '.join(missing)}",
+                message=f"Missing: {', '.join(missing_required)}",
                 fix_hint="Set these variables in your .env file",
                 level="error"
             ))
 
-        # Optional variables (only show if set)
-        optional_vars = ["NETWORK", "PAYMENT_SERVICE_URL"]
-        for var_name in optional_vars:
-            value = os.getenv(var_name)
-            if value:
-                results.append(CheckResult(
-                    passed=True,
-                    message=f"{var_name}: {value}",
-                    level="info"
-                ))
+        # Optional variables
+        # NETWORK - only show if set
+        network_value = os.getenv("NETWORK")
+        if network_value:
+            results.append(CheckResult(
+                passed=True,
+                message=f"NETWORK: {network_value}",
+                level="info"
+            ))
+        
+        # PAYMENT_SERVICE_URL - warn if not set (uses default)
+        payment_service_url = os.getenv("PAYMENT_SERVICE_URL")
+        if payment_service_url:
+            results.append(CheckResult(
+                passed=True,
+                message=f"PAYMENT_SERVICE_URL: {payment_service_url}",
+                level="info"
+            ))
+        else:
+            results.append(CheckResult(
+                passed=True,
+                message="PAYMENT_SERVICE_URL not set (using default: https://payment.masumi.network/api/v1)",
+                level="info"
+            ))
 
         return results
 
@@ -441,7 +487,7 @@ class MasumiChecker:
                     if result.fix_hint:
                         print(f"   → {result.fix_hint}")
         else:
-            # In normal mode, only show warnings and errors
+            # In normal mode, show warnings and errors
             if warnings:
                 for result in warnings:
                     print(f"⚠️  {result.message}")
@@ -456,8 +502,41 @@ class MasumiChecker:
                     if result.fix_hint:
                         print(f"   → {result.fix_hint}")
 
+            # Show required environment variables status (always show)
+            required_vars = ["AGENT_IDENTIFIER", "PAYMENT_API_KEY", "SELLER_VKEY"]
+            required_status = []
+            for var in required_vars:
+                # Find the result for this variable
+                var_result = None
+                for result in self.results:
+                    if result.message.startswith(f"{var} ") or result.message.startswith(f"{var} not set") or result.message.startswith(f"{var} format invalid"):
+                        var_result = result
+                        break
+                if var_result:
+                    if var == "AGENT_IDENTIFIER":
+                        # AGENT_IDENTIFIER shows as warning (⚠️) if missing/invalid, ✅ if set
+                        status_icon = "✅" if var_result.passed else "⚠️"
+                    else:
+                        # Other required vars show as error (❌) if missing/invalid
+                        status_icon = "✅" if var_result.passed else "❌"
+                    required_status.append(f"  {status_icon} {var}")
+                else:
+                    # Variable wasn't checked (shouldn't happen, but handle it)
+                    if var == "AGENT_IDENTIFIER":
+                        required_status.append(f"  ⚠️  {var}")
+                    else:
+                        required_status.append(f"  ❓ {var}")
+            
+            if required_status:
+                if warnings or errors:
+                    print()
+                print("Required Environment Variables:")
+                for status_line in required_status:
+                    print(status_line)
+
             # If everything passed, show summary
             if not warnings and not errors:
+                print()
                 print("✅ All checks passed!")
 
         # Summary
