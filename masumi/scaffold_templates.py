@@ -23,6 +23,35 @@ def _get_process_job_template() -> str:
     \"\"\"
     # Process input
     text = input_data.get("text", "")
+    
+    # Example: Human-in-the-loop - request approval before processing
+    # This demonstrates how to pause execution and request human input
+    from masumi.hitl import request_input
+    
+    # Request approval (this will pause execution until input is provided)
+    # The job status will be set to 'awaiting_input' and execution will wait
+    # until someone calls the /provide_input endpoint
+    approval_data = await request_input(
+        {
+            "input_data": [
+                {
+                    "id": "approve",
+                    "type": "boolean",
+                    "name": "Approve Processing",
+                    "data": {
+                        "description": f"Do you want to process: {text}?"
+                    }
+                }
+            ]
+        },
+        message="Please approve this processing request"
+    )
+    
+    # Check if approval was granted
+    if not approval_data.get("approve", False):
+        return "Processing was not approved"
+    
+    # Continue with processing after approval
     result = f"Processed: {text}"
     
     return result
