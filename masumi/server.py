@@ -18,13 +18,15 @@ from .models import (
     AvailabilityResponse,
     InputSchemaResponse,
     ProvideInputRequest,
+    ProvideInputResponse,
     DemoResponse
 )
 from .endpoints import AgentEndpointHandler
 from .job_manager import JobManager, JobStorage, InMemoryJobStorage
 from .validation import validate_input_data, ValidationError
-from .helper_functions import setup_logging
+from .helper_functions import setup_logging, create_masumi_input_hash
 from .models import JobStatus
+from .hitl import set_job_context, clear_job_context, provide_input_to_job
 
 logger = setup_logging(__name__)
 
@@ -276,9 +278,13 @@ class MasumiAgentServer:
             result_string = result if isinstance(result, str) else None
             
             # Include input schema if awaiting input
+            # Use the HITL-specific schema stored in the job, not the main input schema
             input_schema = None
             if status == JobStatus.AWAITING_INPUT.value:
-                input_schema = self.handler.get_input_schema()
+                input_schema = job.get("awaiting_input_schema")
+                # Fallback to main schema if HITL schema not found (shouldn't happen, but be safe)
+                if not input_schema:
+                    input_schema = self.handler.get_input_schema()
             
             return StatusResponse(
                 id=str(uuid.uuid4()),
@@ -321,19 +327,32 @@ class MasumiAgentServer:
                 logger.error(f"Error returning input_schema: {e}", exc_info=True)
                 raise HTTPException(status_code=500, detail=str(e))
         
-        @self.app.post("/provide_input")
+        @self.app.post("/provide_input", response_model=ProvideInputResponse)
         async def provide_input(request: ProvideInputRequest):
             """MIP-003: /provide_input - Provides additional input for a job awaiting input"""
             handler = self.handler.get_provide_input_handler()
+            
+            # Use default handler if no custom handler is provided
             if not handler:
-                raise HTTPException(
-                    status_code=501,
-                    detail="Provide input endpoint not implemented"
-                )
+                handler = self._default_provide_input_handler
             
             try:
                 await handler(request.job_id, request.input_data)
-                return {"status": "success", "message": "Input provided successfully"}
+                
+                # Get job to retrieve identifier_from_purchaser for hash calculation
+                job = await self.job_manager.get_job(request.job_id)
+                if not job:
+                    raise ValueError(f"Job {request.job_id} not found")
+                
+                # Calculate input_hash for the provided input_data
+                identifier_from_purchaser = job.get("identifier_from_purchaser", "")
+                input_hash = create_masumi_input_hash(request.input_data, identifier_from_purchaser)
+                
+                # Return response with input_hash and signature (signature is empty for now)
+                return ProvideInputResponse(
+                    input_hash=input_hash,
+                    signature=""  # Signature not implemented yet, empty string for compatibility
+                )
             except Exception as e:
                 logger.error(f"Error in provide_input handler: {e}", exc_info=True)
                 raise HTTPException(status_code=500, detail=str(e))
@@ -405,11 +424,18 @@ class MasumiAgentServer:
             input_data = job.get("input_data", {})
             identifier_from_purchaser = job.get("identifier_from_purchaser", "")
             
+            # Set job context for HITL functionality
+            set_job_context(job_id, self.job_manager)
             try:
-                # We await the handler. If it's a long-running but properly async function,
-                # the event loop will remain responsive to other requests.
-                result = await start_handler(identifier_from_purchaser, input_data)
-                logger.info(f"Agent logic completed for job {job_id}")
+                try:
+                    # We await the handler. If it's a long-running but properly async function,
+                    # the event loop will remain responsive to other requests.
+                    # If request_input() is called, it will pause execution here until input is provided.
+                    result = await start_handler(identifier_from_purchaser, input_data)
+                    logger.info(f"Agent logic completed for job {job_id}")
+                finally:
+                    # Always clear the context after execution
+                    clear_job_context()
             except Exception as e:
                 logger.error(f"Error executing agent logic for job {job_id}: {e}", exc_info=True)
                 await self.job_manager.set_job_failed(job_id, str(e))
@@ -453,6 +479,68 @@ class MasumiAgentServer:
                 await self.job_manager.cleanup_payment_instance(job_id)
             except Exception as cleanup_error:
                 logger.error(f"Error during final cleanup: {cleanup_error}", exc_info=True)
+    
+    async def _default_provide_input_handler(self, job_id: str, input_data: Dict[str, Any]) -> None:
+        """
+        Default handler for /provide_input endpoint.
+        
+        This handler:
+        1. Validates the job is in AWAITING_INPUT status
+        2. Validates input data against the stored schema (if available)
+        3. Resumes the job with the provided input
+        4. Signals the waiting coroutine to continue execution
+        
+        Args:
+            job_id: The job ID
+            input_data: The input data provided by the human
+        """
+        # Get the job
+        job = await self.job_manager.get_job(job_id)
+        if not job:
+            raise ValueError(f"Job {job_id} not found")
+        
+        # Verify job is awaiting input
+        if job.get("status") != JobStatus.AWAITING_INPUT.value:
+            raise ValueError(
+                f"Job {job_id} is not awaiting input. Current status: {job.get('status')}"
+            )
+        
+        # Validate input against schema if available
+        input_schema = job.get("awaiting_input_schema")
+        if input_schema:
+            logger.debug(f"Validating input_data for job {job_id}: {input_data} against schema: {input_schema}")
+            try:
+                validate_input_data(input_data, input_schema)
+            except ValidationError as e:
+                # Provide more helpful error message
+                schema_fields = []
+                if "input_data" in input_schema:
+                    schema_fields = [field.get("id", "unknown") for field in input_schema["input_data"]]
+                elif "input_groups" in input_schema:
+                    for group in input_schema["input_groups"]:
+                        schema_fields.extend([field.get("id", "unknown") for field in group.get("input_data", [])])
+                
+                error_detail = {
+                    "message": str(e),
+                    "received_fields": list(input_data.keys()),
+                    "expected_fields": schema_fields,
+                    "field_errors": getattr(e, 'field_errors', {})
+                }
+                logger.warning(f"Input validation failed for job {job_id}: {error_detail}")
+                raise ValueError(
+                    f"Input validation failed: {str(e)}. "
+                    f"Received fields: {list(input_data.keys())}, "
+                    f"Expected fields: {schema_fields}"
+                )
+        
+        # Resume the job with the input data
+        # This merges the input_data with existing job input_data and sets status to RUNNING
+        await self.job_manager.resume_job_with_input(job_id, input_data)
+        
+        # Signal the waiting coroutine that input has arrived
+        provide_input_to_job(job_id, input_data)
+        
+        logger.info(f"Input provided for job {job_id}, resuming execution")
     
     async def cleanup_background_tasks(self):
         """Cancel all background tasks to prevent memory leaks on shutdown."""

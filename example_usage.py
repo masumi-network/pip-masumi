@@ -5,6 +5,9 @@ Example Masumi Agent - A runnable agent that can be used locally and deployed.
 This example shows how to create a MIP-003 compliant agent using the simplified masumi.run() approach.
 The agent processes text input and returns processed results.
 
+This example also demonstrates Human-in-the-Loop (HITL) functionality, where the agent
+pauses execution to request human approval before completing the job.
+
 To run:
     # API mode (default) - runs as FastAPI server
     masumi run example_usage.py
@@ -54,7 +57,7 @@ async def process_job(identifier_from_purchaser: str, input_data: dict):
         input_data: Input data matching your input schema
     
     Returns:
-        Result of the processing (string, dict, or any serializable type)
+        Result of the processing as a string. The SDK will handle wrapping it in the response format.
     """
     logger.info(f"Processing job for purchaser: {identifier_from_purchaser}")
     logger.info(f"Input data: {input_data}")
@@ -76,15 +79,39 @@ async def process_job(identifier_from_purchaser: str, input_data: dict):
     else:
         result = f"Processed: {text}"
     
-    logger.info(f"Processing complete. Result: {result[:100]}...")  # Log first 100 chars
+    # Example: Human-in-the-loop - request approval before processing
+    # This demonstrates how to pause execution and request human input
+    from masumi.hitl import request_input
     
-    # Return result - can be string, dict, or any serializable type
-    return {
-        "status": "completed",
-        "result": result,
-        "operation": operation,
-        "input_length": len(text)
-    }
+    # Request approval (this will pause execution until input is provided)
+    # The job status will be set to 'awaiting_input' and execution will wait
+    # until someone calls the /provide_input endpoint
+    approval_data = await request_input(
+        {
+            "input_data": [
+                {
+                    "id": "approve",
+                    "type": "boolean",
+                    "name": "Approve Processing",
+                    "data": {
+                        "description": f"Do you want to process: {text}? Operation: {operation}"
+                    }
+                }
+            ]
+        },
+        message="Please approve this processing request"
+    )
+    
+    # Check if approval was granted
+    if not approval_data.get("approve", False):
+        logger.info("Processing was not approved by user")
+        return "Processing was not approved"
+    
+    logger.info(f"Processing approved. Result: {result[:100]}...")  # Log first 100 chars
+    
+    # Return result as a string
+    # The SDK will handle wrapping it in the response format
+    return result
 
 
 # ─────────────────────────────────────────────────────────────────────────────

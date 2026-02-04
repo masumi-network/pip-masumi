@@ -212,6 +212,53 @@ class JobManager:
         )
         logger.error(f"Job {job_id} marked as failed: {error}")
     
+    async def set_job_awaiting_input(self, job_id: str, input_schema: Optional[Dict[str, Any]] = None, message: Optional[str] = None) -> None:
+        """
+        Mark a job as awaiting human input.
+        
+        Args:
+            job_id: The job ID
+            input_schema: Optional schema defining what input is needed (MIP-003 format)
+            message: Optional message explaining why input is needed
+        """
+        updates = {
+            "status": JobStatus.AWAITING_INPUT.value,
+        }
+        if input_schema is not None:
+            updates["awaiting_input_schema"] = input_schema
+        if message is not None:
+            updates["awaiting_input_message"] = message
+        
+        await self.update_job_status(job_id, **updates)
+        logger.info(f"Job {job_id} marked as awaiting input")
+    
+    async def resume_job_with_input(self, job_id: str, input_data: Dict[str, Any]) -> None:
+        """
+        Resume a job that was awaiting input by updating it with the provided input data.
+        
+        This merges the provided input_data with the existing job input_data and sets
+        status back to RUNNING so execution can continue.
+        
+        Args:
+            job_id: The job ID
+            input_data: The input data provided by the human
+        """
+        job = await self.get_job(job_id)
+        if not job:
+            raise ValueError(f"Job {job_id} not found")
+        
+        # Merge the new input data with existing input data
+        existing_input = job.get("input_data", {})
+        merged_input = {**existing_input, **input_data}
+        
+        # Update job with merged input and set status back to running
+        await self.update_job_status(
+            job_id,
+            JobStatus.RUNNING.value,
+            input_data=merged_input
+        )
+        logger.info(f"Job {job_id} resumed with input data")
+    
     def get_payment_instance(self, job_id: str) -> Optional[Payment]:
         """Get the payment instance for a job."""
         return self._payment_instances.get(job_id)
