@@ -46,15 +46,17 @@ async def request_input(input_schema: Dict[str, Any], message: Optional[str] = N
     job_id = context['job_id']
     job_manager = context['job_manager']
     
-    # Set job to awaiting input status
-    await job_manager.set_job_awaiting_input(job_id, input_schema, message)
-    
-    # Create an event for this job if it doesn't exist
+    # Create an event for this job BEFORE updating status to avoid race condition
+    # If we update status first, a client could poll /status, see awaiting_input,
+    # and call /provide_input before the event exists, causing indefinite wait
     if job_id not in _input_events:
         _input_events[job_id] = asyncio.Event()
     else:
         # Reset the event in case it was already set
         _input_events[job_id].clear()
+    
+    # Set job to awaiting input status (after event is ready)
+    await job_manager.set_job_awaiting_input(job_id, input_schema, message)
     
     # Wait for input via async event
     # This will block until provide_input is called and sets the event

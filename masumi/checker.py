@@ -260,8 +260,6 @@ class MasumiChecker:
         # PAYMENT_API_KEY and SELLER_VKEY are required (errors)
         required_vars = ["PAYMENT_API_KEY", "SELLER_VKEY"]
         missing_required = []
-        agent_identifier_missing = False
-        agent_identifier_invalid = False
 
         # Check AGENT_IDENTIFIER separately (as warning)
         agent_identifier_value = os.getenv("AGENT_IDENTIFIER")
@@ -275,7 +273,6 @@ class MasumiChecker:
                     level="info"
                 ))
             else:
-                agent_identifier_invalid = True
                 results.append(CheckResult(
                     passed=False,
                     message=f"AGENT_IDENTIFIER format invalid: {error_msg}",
@@ -283,7 +280,6 @@ class MasumiChecker:
                     level="warning"
                 ))
         else:
-            agent_identifier_missing = True
             results.append(CheckResult(
                 passed=False,
                 message="AGENT_IDENTIFIER not set",
