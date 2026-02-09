@@ -330,14 +330,22 @@ class MasumiAgentServer:
         @self.app.post("/provide_input", response_model=ProvideInputResponse)
         async def provide_input(request: ProvideInputRequest):
             """MIP-003: /provide_input - Provides additional input for a job awaiting input"""
-            handler = self.handler.get_provide_input_handler()
-            
-            # Use default handler if no custom handler is provided
-            if not handler:
-                handler = self._default_provide_input_handler
+            custom_handler = self.handler.get_provide_input_handler()
             
             try:
-                await handler(request.job_id, request.input_data)
+                # Use custom handler if provided, otherwise use default
+                if custom_handler:
+                    await custom_handler(request.job_id, request.input_data)
+                else:
+                    await self._default_provide_input_handler(request.job_id, request.input_data)
+                
+                # Always signal the waiting coroutine that input has arrived
+                # This must happen regardless of which handler was used, otherwise
+                # jobs using request_input() will hang indefinitely
+                # Note: If a custom handler is used, we still need to signal the HITL event
+                # because the custom handler cannot easily call provide_input_to_job itself
+                if custom_handler:
+                    provide_input_to_job(request.job_id, request.input_data)
                 
                 # Get job to retrieve identifier_from_purchaser for hash calculation
                 job = await self.job_manager.get_job(request.job_id)
