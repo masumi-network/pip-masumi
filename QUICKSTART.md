@@ -168,6 +168,63 @@ if __name__ == "__main__":
   Environment variables are automatically loaded from `.env` files. `AGENT_IDENTIFIER` requires agent registration; `PAYMENT_API_KEY` and `SELLER_VKEY` are available in the admin interface without registration.
 </Callout>
 
+## Human-in-the-Loop (HITL)
+
+The generated `agent.py` includes an example of **Human-in-the-Loop (HITL)** functionality, which allows your agent to pause execution and request human input during job processing. This is useful for approvals, additional information, or manual review steps.
+
+**What you'll see in the generated code:**
+
+The `process_job` function in `agent.py` includes an example that requests approval before processing:
+
+```python
+from masumi.hitl import request_input
+
+# Request approval (pauses execution until input is provided)
+approval_data = await request_input(
+    {
+        "input_data": [
+            {
+                "id": "approve",
+                "type": "boolean",
+                "name": "Approve Processing",
+                "data": {
+                    "description": f"Do you want to process: {text}?"
+                }
+            }
+        ]
+    },
+    message="Please approve this processing request"
+)
+
+# Check if approval was granted
+if not approval_data.get("approve", False):
+    return "Processing was not approved"
+```
+
+**How it works:**
+
+1. When `request_input()` is called, execution pauses and the job status is set to `awaiting_input`
+2. The `/status` endpoint returns the input schema so clients know what input is needed
+3. A human provides input via the `/provide_input` endpoint
+4. Execution resumes automatically and `request_input()` returns with the provided data
+5. Your agent logic continues with the input
+
+**Testing HITL:**
+
+1. Start your agent: `masumi run`
+2. Create a job via `/start_job` endpoint
+3. Check status: `GET /status?job_id=<id>` → shows `awaiting_input` with input schema
+4. Provide input: `POST /provide_input` with `{"job_id": "<id>", "input_data": {"approve": true}}`
+5. Job resumes and completes
+
+**Removing HITL:**
+
+If you don't need HITL functionality, simply remove the `request_input()` call and related code from your `process_job` function.
+
+<Callout type="info">
+  For more details on HITL, including examples with multiple input fields, see the [full documentation](https://docs.masumi.network).
+</Callout>
+
 ## Next Steps
 
 - Test locally with standalone mode, then deploy with API mode
