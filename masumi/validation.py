@@ -4,6 +4,7 @@ Input schema validation according to MIP-003 Attachment 01.
 
 import re
 import logging
+from datetime import datetime
 from typing import Dict, Any, List, Optional
 from .models import InputField, ValidationRule
 from .helper_functions import setup_logging
@@ -76,40 +77,66 @@ def validate_tel_pattern(value: str) -> bool:
 
 
 def validate_date_format(value: str) -> bool:
-    """Validate date format (YYYY-MM-DD)."""
+    """Validate date format (YYYY-MM-DD) with valid month (01-12) and day ranges."""
     if not isinstance(value, str):
         return False
-    # HTML date input format: YYYY-MM-DD
-    pattern = r'^\d{4}-\d{2}-\d{2}$'
-    return bool(re.match(pattern, value))
+    # HTML date input format: YYYY-MM-DD - use datetime for semantic validation (rejects 2025-13-32, etc.)
+    try:
+        datetime.strptime(value, "%Y-%m-%d")
+        return True
+    except ValueError:
+        return False
 
 
 def validate_datetime_local_format(value: str) -> bool:
-    """Validate datetime-local format (YYYY-MM-DDTHH:MM or YYYY-MM-DDTHH:MM:SS or YYYY-MM-DDTHH:MM:SS.sss)."""
+    """Validate datetime-local format (YYYY-MM-DDTHH:MM or YYYY-MM-DDTHH:MM:SS or YYYY-MM-DDTHH:MM:SS.sss) with valid ranges.
+    Per HTML spec, datetime-local must have NO timezone information (strptime rejects +05:00, Z, etc.)."""
     if not isinstance(value, str):
         return False
-    # HTML datetime-local format: YYYY-MM-DDTHH:MM or YYYY-MM-DDTHH:MM:SS or YYYY-MM-DDTHH:MM:SS.sss
-    # Fractional seconds are only allowed when full seconds are present
-    pattern = r'^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d{1,3})?)?$'
-    return bool(re.match(pattern, value))
+    # Use strptime (not fromisoformat) to reject timezone offsets - HTML datetime-local is local-only
+    for fmt in ("%Y-%m-%dT%H:%M", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M:%S.%f"):
+        try:
+            datetime.strptime(value, fmt)
+            return True
+        except ValueError:
+            continue
+    return False
 
 
 def validate_time_format(value: str) -> bool:
-    """Validate time format (HH:MM or HH:MM:SS or HH:MM:SS.sss)."""
+    """Validate time format (HH:MM or HH:MM:SS or HH:MM:SS.sss) with valid ranges (hours 00-23, minutes/seconds 00-59)."""
     if not isinstance(value, str):
         return False
-    # HTML time input format: HH:MM or HH:MM:SS or HH:MM:SS.sss
-    # Fractional seconds are only allowed when full seconds are present
-    pattern = r'^\d{2}:\d{2}(:\d{2}(\.\d{1,3})?)?$'
-    return bool(re.match(pattern, value))
+    # Use datetime parsing for semantic validation (rejects 25:00, 12:60, etc.)
+    try:
+        datetime.strptime(value, "%H:%M")
+        return True
+    except ValueError:
+        pass
+    try:
+        datetime.strptime(value, "%H:%M:%S")
+        return True
+    except ValueError:
+        pass
+    # HH:MM:SS.sss - strptime %f accepts 1-6 digits
+    if re.match(r"^\d{2}:\d{2}:\d{2}\.\d{1,6}$", value):
+        try:
+            datetime.strptime(value, "%H:%M:%S.%f")
+            return True
+        except ValueError:
+            pass
+    return False
 
 
 def validate_month_format(value: str) -> bool:
-    """Validate month format (YYYY-MM)."""
+    """Validate month format (YYYY-MM) with valid month range (01-12)."""
     if not isinstance(value, str):
         return False
-    # HTML month input format: YYYY-MM
-    pattern = r'^\d{4}-\d{2}$'
+    # HTML month input format: YYYY-MM with months in range 01-12
+    # Pattern breakdown:
+    #   0[1-9]  - months 01-09
+    #   1[0-2]  - months 10-12
+    pattern = r'^\d{4}-(0[1-9]|1[0-2])$'
     return bool(re.match(pattern, value))
 
 
