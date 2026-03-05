@@ -320,7 +320,9 @@ class Payment:
         
         Args:
             callback (Callable, optional): Function to call when a payment is ready to process.
-                The callback is triggered when payment reaches FundsLocked state (PaymentOnChainState.FUNDS_LOCKED).
+                The callback is triggered when payment reaches either:
+                - FundsLocked state (PaymentOnChainState.FUNDS_LOCKED) for paid agents
+                - FundsOrDatumInvalid state (PaymentOnChainState.FUNDS_OR_DATUM_INVALID) for free agents
                 The function will receive the full payment dict as its parameter.
                 Can be either a regular function or an async function.
                 The callback runs in a separate task to avoid blocking the monitoring loop.
@@ -411,11 +413,13 @@ class Payment:
                                 continue
                             
                             logger.debug(f"Payment {payment_id[:8]}...: state={on_chain_state}, action={next_action}")
-                            
-                            # Trigger callback ONLY when payment is ready to process (FundsLocked)
-                            # and we haven't triggered it yet
-                            if on_chain_state == PaymentOnChainState.FUNDS_LOCKED.value and payment_id not in self._callback_triggered_ids:
-                                logger.info(f"Payment {payment_id[:8]}... reached FundsLocked state, triggering callback")
+
+                            # Trigger callback when payment is ready to process
+                            # FundsLocked: Normal paid agents (payment received and locked)
+                            # FundsOrDatumInvalid: Free agents (0 cost - no funds to lock, but job should still execute)
+                            if (on_chain_state in [PaymentOnChainState.FUNDS_LOCKED.value, PaymentOnChainState.FUNDS_OR_DATUM_INVALID.value]
+                                and payment_id not in self._callback_triggered_ids):
+                                logger.info(f"Payment {payment_id[:8]}... reached {on_chain_state} state, triggering callback")
                                 self._callback_triggered_ids.add(payment_id)
                                 
                                 # Call the callback function if provided
