@@ -322,7 +322,9 @@ class Payment:
             callback (Callable, optional): Function to call when a payment is ready to process.
                 The callback is triggered when payment reaches either:
                 - FundsLocked state (PaymentOnChainState.FUNDS_LOCKED) for paid agents
-                - FundsOrDatumInvalid state (PaymentOnChainState.FUNDS_OR_DATUM_INVALID) for free agents
+                - FundsOrDatumInvalid state (PaymentOnChainState.FUNDS_OR_DATUM_INVALID) for free agents ONLY
+                  (validated by checking if price/amount is 0 in payment data)
+                Note: For paid agents, FundsOrDatumInvalid means an actual error and callback is NOT triggered.
                 The function will receive the full payment dict as its parameter.
                 Can be either a regular function or an async function.
                 The callback runs in a separate task to avoid blocking the monitoring loop.
@@ -414,11 +416,38 @@ class Payment:
                             
                             logger.debug(f"Payment {payment_id[:8]}...: state={on_chain_state}, action={next_action}")
 
-                            # Trigger callback when payment is ready to process
-                            # FundsLocked: Normal paid agents (payment received and locked)
-                            # FundsOrDatumInvalid: Free agents (0 cost - no funds to lock, but job should still execute)
-                            if (on_chain_state in [PaymentOnChainState.FUNDS_LOCKED.value, PaymentOnChainState.FUNDS_OR_DATUM_INVALID.value]
-                                and payment_id not in self._callback_triggered_ids):
+                            # Determine if we should trigger the callback based on on-chain state
+                            should_trigger_callback = False
+
+                            # FundsLocked: Always valid - payment received and locked (normal paid agents)
+                            if on_chain_state == PaymentOnChainState.FUNDS_LOCKED.value:
+                                should_trigger_callback = True
+
+                            # FundsOrDatumInvalid: Only valid for free agents (0 cost)
+                            # For paid agents, this state means funds/datum are genuinely invalid (wrong amount, etc.)
+                            elif on_chain_state == PaymentOnChainState.FUNDS_OR_DATUM_INVALID.value:
+                                # Check if this is a free agent by looking for price/amount in payment data
+                                # The payment service should include pricing info in the payment dict
+                                is_free_agent = False
+
+                                # Check various possible fields that might indicate free/0-cost
+                                if "price" in payment and payment["price"] == 0:
+                                    is_free_agent = True
+                                elif "amount" in payment and payment["amount"] == 0:
+                                    is_free_agent = True
+                                elif "amounts" in payment and (not payment["amounts"] or all(a.get("amount", 1) == 0 for a in payment["amounts"])):
+                                    is_free_agent = True
+
+                                if is_free_agent:
+                                    logger.info(f"Payment {payment_id[:8]}... is a free agent (0 cost), accepting FundsOrDatumInvalid state")
+                                    should_trigger_callback = True
+                                else:
+                                    logger.error(f"Payment {payment_id[:8]}... reached FundsOrDatumInvalid state but is NOT a free agent - this indicates invalid funds or datum. Not triggering callback.")
+                                    logger.error(f"Payment data: {payment}")
+                                    # Do not trigger callback - this is a genuine error for paid agents
+
+                            # Trigger callback if valid and not already triggered
+                            if should_trigger_callback and payment_id not in self._callback_triggered_ids:
                                 logger.info(f"Payment {payment_id[:8]}... reached {on_chain_state} state, triggering callback")
                                 self._callback_triggered_ids.add(payment_id)
                                 

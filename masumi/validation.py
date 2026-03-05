@@ -75,6 +75,58 @@ def validate_tel_pattern(value: str) -> bool:
     return bool(re.match(pattern, value))
 
 
+def validate_date_format(value: str) -> bool:
+    """Validate date format (YYYY-MM-DD)."""
+    if not isinstance(value, str):
+        return False
+    # HTML date input format: YYYY-MM-DD
+    pattern = r'^\d{4}-\d{2}-\d{2}$'
+    return bool(re.match(pattern, value))
+
+
+def validate_datetime_local_format(value: str) -> bool:
+    """Validate datetime-local format (YYYY-MM-DDTHH:MM or YYYY-MM-DDTHH:MM:SS or YYYY-MM-DDTHH:MM:SS.sss)."""
+    if not isinstance(value, str):
+        return False
+    # HTML datetime-local format: YYYY-MM-DDTHH:MM or YYYY-MM-DDTHH:MM:SS or YYYY-MM-DDTHH:MM:SS.sss
+    # Fractional seconds are only allowed when full seconds are present
+    pattern = r'^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d{1,3})?)?$'
+    return bool(re.match(pattern, value))
+
+
+def validate_time_format(value: str) -> bool:
+    """Validate time format (HH:MM or HH:MM:SS or HH:MM:SS.sss)."""
+    if not isinstance(value, str):
+        return False
+    # HTML time input format: HH:MM or HH:MM:SS or HH:MM:SS.sss
+    # Fractional seconds are only allowed when full seconds are present
+    pattern = r'^\d{2}:\d{2}(:\d{2}(\.\d{1,3})?)?$'
+    return bool(re.match(pattern, value))
+
+
+def validate_month_format(value: str) -> bool:
+    """Validate month format (YYYY-MM)."""
+    if not isinstance(value, str):
+        return False
+    # HTML month input format: YYYY-MM
+    pattern = r'^\d{4}-\d{2}$'
+    return bool(re.match(pattern, value))
+
+
+def validate_week_format(value: str) -> bool:
+    """Validate week format (YYYY-Www) with ISO 8601 week number range (01-53)."""
+    if not isinstance(value, str):
+        return False
+    # HTML week input format: YYYY-Www (e.g., 2025-W01)
+    # ISO 8601 specifies week numbers must be in range 01-53
+    # Pattern breakdown:
+    #   W0[1-9]    - weeks 01-09
+    #   W[1-4][0-9] - weeks 10-49
+    #   W5[0-3]    - weeks 50-53
+    pattern = r'^\d{4}-W(0[1-9]|[1-4][0-9]|5[0-3])$'
+    return bool(re.match(pattern, value))
+
+
 def validate_format(value: Any, format_type: str) -> bool:
     """Validate value format based on format type."""
     format_validators = {
@@ -83,6 +135,11 @@ def validate_format(value: Any, format_type: str) -> bool:
         "nonempty": validate_nonempty,
         "integer": validate_integer,
         "tel-pattern": validate_tel_pattern,
+        "date": validate_date_format,
+        "datetime-local": validate_datetime_local_format,
+        "time": validate_time_format,
+        "month": validate_month_format,
+        "week": validate_week_format,
     }
     
     validator = format_validators.get(format_type)
@@ -313,13 +370,28 @@ def validate_field_value(value: Any, field: InputField) -> List[str]:
         # Display-only field, no validation needed
         pass
     
-    # Auto-validate format for email and url types (per MIP-003 spec)
+    # Auto-validate format for email, url, and date/time types (per MIP-003 spec)
     if field_type == "email" and isinstance(value, str):
         if not validate_email(value):
             errors.append(f"Field '{field_id}' must be a valid email address")
     elif field_type == "url" and isinstance(value, str):
         if not validate_url(value):
             errors.append(f"Field '{field_id}' must be a valid URL")
+    elif field_type == "date" and isinstance(value, str):
+        if not validate_date_format(value):
+            errors.append(f"Field '{field_id}' must be a valid date in YYYY-MM-DD format")
+    elif field_type == "datetime-local" and isinstance(value, str):
+        if not validate_datetime_local_format(value):
+            errors.append(f"Field '{field_id}' must be a valid datetime in YYYY-MM-DDTHH:MM format")
+    elif field_type == "time" and isinstance(value, str):
+        if not validate_time_format(value):
+            errors.append(f"Field '{field_id}' must be a valid time in HH:MM format")
+    elif field_type == "month" and isinstance(value, str):
+        if not validate_month_format(value):
+            errors.append(f"Field '{field_id}' must be a valid month in YYYY-MM format")
+    elif field_type == "week" and isinstance(value, str):
+        if not validate_week_format(value):
+            errors.append(f"Field '{field_id}' must be a valid week in YYYY-Www format")
     
     # Process validations array
     if field.validations:
