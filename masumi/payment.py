@@ -69,6 +69,7 @@ class Payment:
         self.payment_ids: Set[str] = set()
         self._callback_triggered_ids: Set[str] = set()
         self._logged_error_ids: Set[str] = set()  # Track payments with logged errors (separate from callbacks)
+        self._logged_warning_ids: Set[str] = set()  # Track payments with logged missing-fields warning (once per payment)
         self._callback_tasks: Set[asyncio.Task] = set()  # Track callback tasks to prevent memory leaks
         self.identifier_from_purchaser = identifier_from_purchaser
         self._status_check_task: Optional[asyncio.Task] = None
@@ -428,11 +429,10 @@ class Payment:
                             # For paid agents, this state means funds/datum are genuinely invalid (wrong amount, etc.)
                             elif on_chain_state == PaymentOnChainState.FUNDS_OR_DATUM_INVALID.value:
                                 # Check if this is a free agent by looking for price/amount in payment data
-                                # The payment service should include pricing info in the payment dict
+                                # Priority: "price" → "amount" → "amounts". First explicit zero wins.
+                                # Fail-safe: if none of these fields are present, default to paid (not free).
                                 is_free_agent = False
 
-                                # Check various possible fields that might indicate free/0-cost
-                                # Require EXPLICIT zero values - empty/missing data defaults to NOT free (fail-safe)
                                 if "price" in payment and payment["price"] == 0:
                                     is_free_agent = True
                                 elif "amount" in payment and payment["amount"] == 0:
@@ -446,6 +446,14 @@ class Payment:
                                 else:
                                     # Mark as logged to prevent error log spam on subsequent checks
                                     # Use separate set from callback tracking to allow state transitions
+                                    if not any(k in payment for k in ("price", "amount", "amounts")):
+                                        if payment_id not in self._logged_warning_ids:
+                                            logger.warning(
+                                                f"Payment {payment_id[:8]}... hit FundsOrDatumInvalid but payment data "
+                                                "contains no price/amount/amounts field — cannot determine if free agent. "
+                                                "Treating as paid (not triggering callback)."
+                                            )
+                                            self._logged_warning_ids.add(payment_id)
                                     if payment_id not in self._logged_error_ids:
                                         logger.error(f"Payment {payment_id[:8]}... reached FundsOrDatumInvalid state but is NOT a free agent - this indicates invalid funds or datum. Not triggering callback.")
                                         logger.error(f"Payment data: {payment}")
@@ -503,6 +511,7 @@ class Payment:
                                 # Clean up tracking
                                 self._callback_triggered_ids.discard(payment_id)
                                 self._logged_error_ids.discard(payment_id)
+                                self._logged_warning_ids.discard(payment_id)
                                 payment_check_times.pop(payment_id, None)
                         
                         except Exception as e:
@@ -548,6 +557,7 @@ class Payment:
             # Clean up callback and error tracking
             self._callback_triggered_ids.clear()
             self._logged_error_ids.clear()
+            self._logged_warning_ids.clear()
         
         # Cancel any pending callback tasks
         if self._callback_tasks:

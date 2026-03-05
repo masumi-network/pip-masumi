@@ -108,6 +108,7 @@ def validate_time_format(value: str) -> bool:
     if not isinstance(value, str):
         return False
     # Use datetime parsing for semantic validation (rejects 25:00, 12:60, etc.)
+    # All branches use strptime so variable-width components (e.g. "9:5" or "9:5:3.123") are accepted consistently.
     try:
         datetime.strptime(value, "%H:%M")
         return True
@@ -118,13 +119,11 @@ def validate_time_format(value: str) -> bool:
         return True
     except ValueError:
         pass
-    # HH:MM:SS.sss - strptime %f accepts 1-6 digits
-    if re.match(r"^\d{2}:\d{2}:\d{2}\.\d{1,6}$", value):
-        try:
-            datetime.strptime(value, "%H:%M:%S.%f")
-            return True
-        except ValueError:
-            pass
+    try:
+        datetime.strptime(value, "%H:%M:%S.%f")
+        return True
+    except ValueError:
+        pass
     return False
 
 
@@ -132,12 +131,12 @@ def validate_month_format(value: str) -> bool:
     """Validate month format (YYYY-MM) with valid month range (01-12)."""
     if not isinstance(value, str):
         return False
-    # HTML month input format: YYYY-MM with months in range 01-12
-    # Pattern breakdown:
-    #   0[1-9]  - months 01-09
-    #   1[0-2]  - months 10-12
-    pattern = r'^\d{4}-(0[1-9]|1[0-2])$'
-    return bool(re.match(pattern, value))
+    # HTML month input format: YYYY-MM - use strptime for consistency with validate_date_format
+    try:
+        datetime.strptime(value, "%Y-%m")
+        return True
+    except ValueError:
+        return False
 
 
 def validate_week_format(value: str) -> bool:
@@ -146,10 +145,8 @@ def validate_week_format(value: str) -> bool:
         return False
     # HTML week input format: YYYY-Www (e.g., 2025-W01)
     # ISO 8601 specifies week numbers must be in range 01-53
-    # Pattern breakdown:
-    #   W0[1-9]    - weeks 01-09
-    #   W[1-4][0-9] - weeks 10-49
-    #   W5[0-3]    - weeks 50-53
+    # Note: W53 is accepted for all years. Full ISO 8601 enforcement (W53 only exists in
+    # certain years) would require isocalendar() checks and is not enforced by browsers either.
     pattern = r'^\d{4}-W(0[1-9]|[1-4][0-9]|5[0-3])$'
     return bool(re.match(pattern, value))
 
@@ -398,6 +395,8 @@ def validate_field_value(value: Any, field: InputField) -> List[str]:
         pass
     
     # Auto-validate format for email, url, and date/time types (per MIP-003 spec)
+    # Direct call here (not via validate_format) because type-based validation
+    # is separate from explicit format validation rules in the validations array.
     if field_type == "email" and isinstance(value, str):
         if not validate_email(value):
             errors.append(f"Field '{field_id}' must be a valid email address")
