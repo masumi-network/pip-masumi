@@ -382,10 +382,10 @@ def validate_field_value(value: Any, field: InputField) -> List[str]:
             errors.append(f"Field '{field_id}' must be a valid date in YYYY-MM-DD format")
     elif field_type == "datetime-local" and isinstance(value, str):
         if not validate_datetime_local_format(value):
-            errors.append(f"Field '{field_id}' must be a valid datetime in YYYY-MM-DDTHH:MM format")
+            errors.append(f"Field '{field_id}' must be a valid datetime in YYYY-MM-DDTHH:MM[:SS[.sss]] format")
     elif field_type == "time" and isinstance(value, str):
         if not validate_time_format(value):
-            errors.append(f"Field '{field_id}' must be a valid time in HH:MM format")
+            errors.append(f"Field '{field_id}' must be a valid time in HH:MM[:SS[.sss]] format")
     elif field_type == "month" and isinstance(value, str):
         if not validate_month_format(value):
             errors.append(f"Field '{field_id}' must be a valid month in YYYY-MM format")

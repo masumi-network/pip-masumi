@@ -435,7 +435,7 @@ class Payment:
                                     is_free_agent = True
                                 elif "amount" in payment and payment["amount"] == 0:
                                     is_free_agent = True
-                                elif "amounts" in payment and (not payment["amounts"] or all(a.get("amount", 1) == 0 for a in payment["amounts"])):
+                                elif "amounts" in payment and isinstance(payment["amounts"], list) and (not payment["amounts"] or all(isinstance(a, dict) and a.get("amount", 1) == 0 for a in payment["amounts"])):
                                     is_free_agent = True
 
                                 if is_free_agent:
