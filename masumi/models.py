@@ -45,10 +45,19 @@ class PaymentNextAction(str, Enum):
 
 class StartJobRequest(BaseModel):
     """Request model for /start_job endpoint"""
-    identifier_from_purchaser: str = Field(..., description="Purchaser-defined identifier")
-    input_data: Optional[Dict[str, Any]] = Field(None, description="Input data matching the input schema")
+    identifier_from_purchaser: str = Field(
+        ...,
+        alias="identifierFromPurchaser",
+        description="Purchaser-defined identifier",
+    )
+    input_data: Optional[Dict[str, Any]] = Field(
+        None,
+        alias="inputData",
+        description="Input data matching the input schema",
+    )
     
     class Config:
+        populate_by_name = True
         json_schema_extra = {
             "example": {
                 "identifier_from_purchaser": "resume-job-123",
@@ -229,5 +238,3 @@ class DemoResponse(BaseModel):
                 }
             }
         }
-
-

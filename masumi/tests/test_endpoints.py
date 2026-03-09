@@ -5,6 +5,7 @@ Tests for endpoint handlers, validation, and FastAPI integration.
 import pytest
 import asyncio
 from masumi.endpoints import AgentEndpointHandler
+from masumi.models import StartJobRequest
 from masumi.validation import validate_input_data, ValidationError
 from masumi.job_manager import JobManager, InMemoryJobStorage
 from masumi.config import Config
@@ -359,6 +360,32 @@ def test_job_manager(mock_config):
     job = asyncio.run(manager.get_job(job_id))
     assert job["status"] == "running"
     assert job["result"] is None
+
+
+def test_start_job_request_accepts_camel_case():
+    """StartJobRequest should accept the admin/UI camelCase payload shape."""
+    request = StartJobRequest.model_validate(
+        {
+            "identifierFromPurchaser": "buyer-123",
+            "inputData": {"text": "hello"},
+        }
+    )
+
+    assert request.identifier_from_purchaser == "buyer-123"
+    assert request.input_data == {"text": "hello"}
+
+
+def test_start_job_request_accepts_snake_case():
+    """StartJobRequest should remain backwards-compatible with snake_case payloads."""
+    request = StartJobRequest.model_validate(
+        {
+            "identifier_from_purchaser": "buyer-123",
+            "input_data": {"text": "hello"},
+        }
+    )
+
+    assert request.identifier_from_purchaser == "buyer-123"
+    assert request.input_data == {"text": "hello"}
 
 
 @pytest.mark.parametrize(
