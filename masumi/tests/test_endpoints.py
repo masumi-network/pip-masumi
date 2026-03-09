@@ -361,6 +361,26 @@ def test_job_manager(mock_config):
     assert job["result"] is None
 
 
+@pytest.mark.parametrize(
+    ("payment_payload", "expected"),
+    [
+        ({"price": 0}, True),
+        ({"price": "0"}, True),
+        ({"price": "0.0"}, True),
+        ({"amount": 0}, True),
+        ({"amount": "0"}, True),
+        ({"amounts": [{"amount": 0}, {"amount": "0"}]}, True),
+        ({"price": 1}, False),
+        ({"amount": "1"}, False),
+        ({"amounts": [{"amount": 0}, {"amount": 1}]}, False),
+        ({}, False),
+    ],
+)
+def test_payment_free_agent_detection(payment_payload, expected):
+    """Zero-cost payments should be detected across numeric and string payload shapes."""
+    assert Payment._is_free_payment(payment_payload) is expected
+
+
 @pytest.mark.asyncio
 async def test_endpoint_handler_all_handlers(endpoint_handler):
     """Test registering all handler types."""

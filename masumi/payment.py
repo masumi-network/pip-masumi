@@ -3,6 +3,7 @@ from datetime import datetime, timezone, timedelta
 import asyncio
 import logging
 import json
+from decimal import Decimal, InvalidOperation
 from typing import List, Optional, Dict, Any, Set
 import aiohttp
 from .config import Config
@@ -88,6 +89,50 @@ class Payment:
         logger.debug(f"Input hash: {self.input_hash}")
         #logger.debug(f"Payment amounts configured: {[f'{a.amount} {a.unit}' for a in amounts]}")
         logger.debug(f"Using purchaser identifier: {self.identifier_from_purchaser}")
+
+    @staticmethod
+    def _is_zero_value(value: Any) -> bool:
+        """Return True when the supplied value represents numeric zero."""
+        if value is None or isinstance(value, bool):
+            return False
+
+        if isinstance(value, (int, float, Decimal)):
+            return value == 0
+
+        if isinstance(value, str):
+            normalized = value.strip()
+            if not normalized:
+                return False
+            try:
+                return Decimal(normalized) == 0
+            except InvalidOperation:
+                return False
+
+        return False
+
+    @classmethod
+    def _is_free_payment(cls, payment: Dict[str, Any]) -> bool:
+        """
+        Detect whether the payment payload represents a zero-cost agent.
+
+        The payment service may return zero values as numbers or strings, and
+        may surface them as `price`, `amount`, or per-entry `amounts`.
+        """
+        if "price" in payment and cls._is_zero_value(payment.get("price")):
+            return True
+
+        if "amount" in payment and cls._is_zero_value(payment.get("amount")):
+            return True
+
+        amounts = payment.get("amounts")
+        if isinstance(amounts, list) and amounts:
+            return all(
+                isinstance(amount_entry, dict)
+                and cls._is_zero_value(amount_entry.get("amount"))
+                for amount_entry in amounts
+            )
+
+        return False
 
     async def create_payment_request(self, metadata: Optional[str] = None) -> Dict[str, Any]:
         """
@@ -428,17 +473,7 @@ class Payment:
                             # FundsOrDatumInvalid: Only valid for free agents (0 cost)
                             # For paid agents, this state means funds/datum are genuinely invalid (wrong amount, etc.)
                             elif on_chain_state == PaymentOnChainState.FUNDS_OR_DATUM_INVALID.value:
-                                # Check if this is a free agent by looking for price/amount in payment data
-                                # Priority: "price" → "amount" → "amounts". First explicit zero wins.
-                                # Fail-safe: if none of these fields are present, default to paid (not free).
-                                is_free_agent = False
-
-                                if "price" in payment and payment["price"] == 0:
-                                    is_free_agent = True
-                                elif "amount" in payment and payment["amount"] == 0:
-                                    is_free_agent = True
-                                elif "amounts" in payment and isinstance(payment["amounts"], list) and payment["amounts"] and all(isinstance(a, dict) and a.get("amount") == 0 for a in payment["amounts"]):
-                                    is_free_agent = True
+                                is_free_agent = self._is_free_payment(payment)
 
                                 if is_free_agent:
                                     logger.info(f"Payment {payment_id[:8]}... is a free agent (0 cost), accepting FundsOrDatumInvalid state")
