@@ -89,3 +89,7 @@ poetry.lock
 docs/_build/
 docs/_static/
 docs/_templates/
+
+# Codex skills
+.agents/
+skills-lock.json
