@@ -372,16 +372,22 @@ class MasumiChecker:
             "https://payment.masumi.network/api/v1"
         )
 
-        # Keep /api/v1 and append /health
-        health_url = f"{payment_service_url}/health"
-
         try:
             async with aiohttp.ClientSession() as session:
+                health_url = f"{payment_service_url}/health"
                 async with session.get(health_url, timeout=aiohttp.ClientTimeout(total=5)) as response:
                     if response.status == 200:
                         return CheckResult(
                             passed=True,
                             message="Payment service reachable",
+                            level="info"
+                        )
+                    if response.status == 404:
+                        # Some deployments do not expose /health, but still serve API routes.
+                        return CheckResult(
+                            passed=True,
+                            message="Payment service reachable (health endpoint not exposed)",
+                            fix_hint=f"Health check returned 404 at {health_url}; verify API routes if requests fail.",
                             level="info"
                         )
                     else:
