@@ -134,6 +134,45 @@ class Payment:
 
         return False
 
+    async def create_free_agent_mock_payment(self) -> Dict[str, Any]:
+        """
+        Create a mock payment response for free agents without hitting the payment service.
+        Free agents don't need blockchain interaction or on-chain fees.
+        """
+        import uuid
+
+        # Generate a unique ID for tracking (not blockchain)
+        free_payment_id = f"FREE-{uuid.uuid4().hex[:24]}"
+
+        # Set mock timestamps (not used for free agents but required by response model)
+        now = datetime.now(timezone.utc)
+        mock_time = int(now.timestamp())
+
+        logger.info(f"Creating mock payment for free agent: {free_payment_id}")
+
+        return {
+            "status": "success",
+            "data": {
+                "blockchainIdentifier": free_payment_id,
+                "payByTime": mock_time,
+                "submitResultTime": mock_time + 86400,  # +24 hours
+                "unlockTime": mock_time,
+                "externalDisputeUnlockTime": mock_time,
+                "agentIdentifier": self.agent_identifier,
+                "sellerVKey": "",  # No wallet needed for free agents
+                "identifierFromPurchaser": self.identifier_from_purchaser,
+                "inputHash": self.input_hash or "",
+                "isFreeAgent": True,  # Flag to indicate free agent
+                "onChainState": "FREE_AGENT"  # Special state
+            },
+            "time_values": {
+                "payByTime": mock_time,
+                "submitResultTime": mock_time + 86400,
+                "unlockTime": mock_time,
+                "externalDisputeUnlockTime": mock_time
+            }
+        }
+
     async def create_payment_request(self, metadata: Optional[str] = None) -> Dict[str, Any]:
         """
         Create a new payment request.

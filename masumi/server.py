@@ -5,6 +5,7 @@ FastAPI server framework for MIP-003 agent endpoints.
 import asyncio
 import json
 import logging
+import os
 import uuid
 from typing import Optional, Callable, Dict, Any, Awaitable, Union, Set
 from fastapi import FastAPI, HTTPException, Query
@@ -94,12 +95,15 @@ class MasumiAgentServer:
         if not seller_vkey:
             seller_vkey = os.getenv("SELLER_VKEY")
         
-        # Validate seller_vkey is provided
-        if not seller_vkey:
+        # Validate seller_vkey is provided (not required for free agents)
+        is_free_agent = getattr(config, "free_agent", False)
+        if not seller_vkey and not is_free_agent:
             raise ValueError(
                 "seller_vkey is required. Provide it directly or set SELLER_VKEY environment variable. "
                 "Get your seller_vkey from the admin interface after registering your agent."
             )
+        if not seller_vkey:
+            seller_vkey = ""  # Free agents use empty seller vkey
         
         self.config = config
         self.agent_identifier = agent_identifier
@@ -182,8 +186,11 @@ class MasumiAgentServer:
                         status_code=500,
                         detail="Start job handler not configured"
                     )
-                
-                # Create payment request
+
+                # Check if this is a free agent (from config; env var used by CLI when creating config)
+                is_free_agent = getattr(self.config, "free_agent", False)
+
+                # Create payment request or mock for free agent
                 payment = Payment(
                     agent_identifier=self.agent_identifier,
                     config=self.config,
@@ -191,11 +198,17 @@ class MasumiAgentServer:
                     input_data=request.input_data,
                     network=self.network
                 )
-                
-                logger.info("Creating payment request...")
-                payment_request = await payment.create_payment_request()
-                blockchain_identifier = payment_request["data"]["blockchainIdentifier"]
-                payment.payment_ids.add(blockchain_identifier)
+
+                if is_free_agent:
+                    logger.info("Free agent detected - bypassing payment service")
+                    # Create mock payment response without hitting payment service
+                    payment_request = await payment.create_free_agent_mock_payment()
+                    blockchain_identifier = payment_request["data"]["blockchainIdentifier"]
+                else:
+                    logger.info("Creating payment request...")
+                    payment_request = await payment.create_payment_request()
+                    blockchain_identifier = payment_request["data"]["blockchainIdentifier"]
+                    payment.payment_ids.add(blockchain_identifier)
                 
                 # Get seller vkey (use provided or from env/config)
                 seller_vkey = self.seller_vkey or payment_request["data"].get("sellerVKey", "")
@@ -214,16 +227,24 @@ class MasumiAgentServer:
                     seller_vkey=seller_vkey,
                     input_hash=payment.input_hash
                 )
-                
-                # Set up payment callback
-                # Callback receives the full payment dict (as per payment.py documentation)
-                async def payment_callback(payment: Dict[str, Any]):
-                    payment_id = payment.get("blockchainIdentifier", "")
-                    await self._handle_payment_confirmed(job_id, payment_id)
-                
-                # Start monitoring payment
-                logger.info(f"Starting payment monitoring for job {job_id}")
-                await payment.start_status_monitoring(callback=payment_callback)
+
+                if is_free_agent:
+                    # For free agents, immediately trigger the job without waiting for payment
+                    logger.info(f"Free agent job {job_id} - executing immediately without payment")
+                    # Schedule the job execution in background; keep strong reference to prevent GC
+                    task = asyncio.create_task(self._handle_payment_confirmed(job_id, blockchain_identifier))
+                    self._background_tasks.add(task)
+                    task.add_done_callback(self._background_tasks.discard)
+                else:
+                    # Set up payment callback for paid agents
+                    # Callback receives the full payment dict (as per payment.py documentation)
+                    async def payment_callback(payment: Dict[str, Any]):
+                        payment_id = payment.get("blockchainIdentifier", "")
+                        await self._handle_payment_confirmed(job_id, payment_id)
+
+                    # Start monitoring payment
+                    logger.info(f"Starting payment monitoring for job {job_id}")
+                    await payment.start_status_monitoring(callback=payment_callback)
                 
                 # Return response
                 return StartJobResponse(
@@ -474,11 +495,14 @@ class MasumiAgentServer:
                 await self.job_manager.cleanup_payment_instance(job_id)
                 return
             
-            # Note: We do NOT call cleanup_payment_instance(job_id) here anymore.
-            # Instead, we let the background monitoring task continue until it 
-            # sees the 'Complete' state on-chain, at which point it will 
-            # naturally stop monitoring that payment ID.
-            logger.info(f"Job {job_id} logic finished. Monitoring will continue until on-chain confirmation.")
+            # Free agents never start payment monitoring, so we must cleanup here.
+            # Paid agents: monitoring task runs until on-chain confirmation; no cleanup needed here.
+            payment_id = job.get("payment_id", "")
+            if payment_id.startswith("FREE-"):
+                await self.job_manager.cleanup_payment_instance(job_id)
+                logger.info(f"Free agent job {job_id} finished; payment instance cleaned up.")
+            else:
+                logger.info(f"Job {job_id} logic finished. Monitoring will continue until on-chain confirmation.")
             
         except Exception as e:
             logger.error(f"Fatal error in _execute_agent_job for job {job_id}: {e}", exc_info=True)

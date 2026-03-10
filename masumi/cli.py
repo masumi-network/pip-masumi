@@ -113,12 +113,14 @@ def run(
     # API mode - create and run FastAPI server
     # Load config from environment if not provided
     if config is None:
+        is_free_agent = os.getenv("IS_FREE_AGENT", "false").lower() == "true"
         config = Config(
             payment_service_url=os.getenv(
                 "PAYMENT_SERVICE_URL",
                 "https://payment.masumi.network/api/v1"
             ),
-            payment_api_key=os.getenv("PAYMENT_API_KEY", "")
+            payment_api_key=os.getenv("PAYMENT_API_KEY", ""),
+            free_agent=is_free_agent
         )
     
     # Load agent_identifier from environment if not provided
