@@ -255,19 +255,19 @@ class MasumiChecker:
 
         results = []
 
-        # Free agents skip payment service; payment credentials not required
-        is_free_agent = os.getenv("IS_FREE_AGENT", "false").lower() == "true"
-        if is_free_agent:
-            results.append(CheckResult(
-                passed=True,
-                message="IS_FREE_AGENT=true: Payment service skipped (Registry Service only)",
-                level="info"
-            ))
+        # Note: Free agent status is determined by querying the registry at runtime
+        # The environment variables below are required for paid agents only
+        results.append(CheckResult(
+            passed=True,
+            message="Free agent status will be determined by registry at runtime",
+            level="info"
+        ))
 
         # Required variables with validation
-        # AGENT_IDENTIFIER is a warning (server can start without it, but needed for full functionality)
-        # PAYMENT_API_KEY and SELLER_VKEY are required for paid agents (errors)
-        required_vars = [] if is_free_agent else ["PAYMENT_API_KEY", "SELLER_VKEY"]
+        # AGENT_IDENTIFIER is required to query the registry
+        # PAYMENT_API_KEY and SELLER_VKEY may be required depending on registry status
+        # (if agent is marked as paid in registry, these are required)
+        required_vars = ["PAYMENT_API_KEY", "SELLER_VKEY"]
         missing_required = []
 
         # Check AGENT_IDENTIFIER separately (as warning)
@@ -514,8 +514,8 @@ class MasumiChecker:
                         print(f"   → {result.fix_hint}")
 
             # Show required environment variables status (always show)
-            is_free = os.getenv("IS_FREE_AGENT", "false").lower() == "true"
-            required_vars = ["AGENT_IDENTIFIER"] + ([] if is_free else ["PAYMENT_API_KEY", "SELLER_VKEY"])
+            # Note: Free agent status is determined by registry, so we show all vars
+            required_vars = ["AGENT_IDENTIFIER", "PAYMENT_API_KEY", "SELLER_VKEY"]
             required_status = []
             for var in required_vars:
                 # Find the result for this variable

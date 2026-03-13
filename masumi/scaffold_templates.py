@@ -100,9 +100,6 @@ def _get_env_template(database: Optional[str], additional_libs: List[str]) -> st
         "# Testing - skip blockchain payments",
         "#MOCK_PAYMENTS=false",
         "",
-        "# Free agents (Sokosumi): set to true for zero-cost agents",
-        "IS_FREE_AGENT=true",
-        "",
     ]
     
     # Database environment variables

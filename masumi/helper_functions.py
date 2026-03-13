@@ -5,6 +5,8 @@ import logging as logger
 import logging
 import sys
 import os
+import aiohttp
+from typing import Optional
 
 
 class ColoredFormatter(logging.Formatter):
@@ -164,3 +166,147 @@ def create_masumi_output_hash(output_string: str, identifier_from_purchaser: str
     result_hash = _create_hash_from_payload(escaped_output, identifier_from_purchaser)
     logger.info(f"Generated Output Hash: {result_hash}")
     return result_hash
+
+
+async def check_free_agent_from_registry(
+    agent_identifier: str,
+    payment_service_url: Optional[str] = None,
+    payment_api_key: Optional[str] = None,
+    network: str = "Preprod"
+) -> bool:
+    """
+    Query the registry to check if an agent is marked as free.
+
+    Args:
+        agent_identifier: The agent identifier to check
+        payment_service_url: URL of the payment service (same service hosts registry endpoint)
+        payment_api_key: API key for the service
+        network: The Cardano network (Preprod or Mainnet)
+
+    Returns:
+        bool: True if the agent is marked as free, False otherwise
+
+    Raises:
+        Exception: If registry query fails
+    """
+    # Use default payment service URL if not provided
+    if not payment_service_url:
+        payment_service_url = os.getenv(
+            "PAYMENT_SERVICE_URL",
+            "https://payment.masumi.network/api/v1"
+        )
+
+    # Load API key from env if not provided
+    if not payment_api_key:
+        payment_api_key = os.getenv("PAYMENT_API_KEY", "")
+
+    if not agent_identifier or agent_identifier == "unregistered-agent":
+        # If agent is not registered, assume not free (default behavior)
+        logging.warning(
+            "Agent identifier not set or unregistered. Assuming non-free agent. "
+            "Set AGENT_IDENTIFIER environment variable or register your agent."
+        )
+        return False
+
+    # Check if API key is available
+    if not payment_api_key:
+        logging.error(
+            "PAYMENT_API_KEY is not set. Cannot query registry without authentication. "
+            "Assuming non-free agent."
+        )
+        return False
+
+    try:
+        # Build headers - try both token and x-api-key for compatibility
+        # Payment endpoints use "token", registry might use "x-api-key"
+        headers = {
+            "Content-Type": "application/json",
+            "token": payment_api_key,
+            "x-api-key": payment_api_key
+        }
+        logging.info(f"Registry auth: Using API key {payment_api_key[:8] if payment_api_key else 'NONE'}... (masked)")
+
+        # Registry endpoint is under /api/v1/ on the payment service
+        # Use the payment_service_url directly (it already includes /api/v1)
+        base_url = payment_service_url.rstrip('/')
+
+        # Query registry endpoint: /registry/agent-identifier with query params
+        # NOT /registry/{id} - the path is literally "agent-identifier"
+        url = f"{base_url}/registry/agent-identifier"
+        params = {
+            "agentIdentifier": agent_identifier,
+            "network": network
+        }
+        logging.info(f"Querying registry at: {url}?agentIdentifier={agent_identifier[:8]}...&network={network}")
+
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url, headers=headers, params=params, timeout=aiohttp.ClientTimeout(total=10)) as response:
+                response_text = await response.text()
+
+                if response.status == 404:
+                    # Agent not found in registry - assume not free
+                    logging.warning(
+                        f"Agent {agent_identifier[:8]}... not found in registry (404). "
+                        f"Response: {response_text}. "
+                        "Assuming non-free agent. Register your agent first."
+                    )
+                    return False
+
+                if response.status != 200:
+                    logging.error(
+                        f"Registry query failed with status {response.status}. "
+                        f"Response: {response_text}. "
+                        "Assuming non-free agent."
+                    )
+                    return False
+
+                # Parse response
+                try:
+                    data = await response.json()
+                except Exception as e:
+                    logging.error(f"Failed to parse registry response as JSON: {response_text}. Error: {e}")
+                    return False
+
+                logging.info(f"Registry response for agent {agent_identifier[:8]}...: {data}")
+
+                # Check if agent is marked as free
+                agent_data = data.get("data", {})
+                metadata = agent_data.get("Metadata", {})
+                agent_pricing = metadata.get("AgentPricing", {})
+
+                # Check 1: pricingType field (most common for free agents)
+                pricing_type = agent_pricing.get("pricingType", "")
+                is_free = pricing_type.lower() == "free"
+
+                # Check 2: If pricingType is not "Free", check Pricing array for amount "0"
+                if not is_free:
+                    pricing_list = agent_pricing.get("Pricing", [])
+                    if pricing_list:
+                        is_free = all(
+                            str(price.get("amount", "1")) == "0"
+                            for price in pricing_list
+                        )
+
+                # Check 3: Explicit isFree field as fallback
+                if not is_free:
+                    is_free = agent_data.get("isFree", False) or agent_data.get("is_free", False)
+
+                logging.info(
+                    f"Agent {agent_identifier[:8]}... registry check: "
+                    f"{'FREE agent' if is_free else 'PAID agent'}"
+                )
+
+                return is_free
+
+    except aiohttp.ClientError as e:
+        logging.error(
+            f"Network error querying registry for agent {agent_identifier[:8]}...: {e}. "
+            "Assuming non-free agent."
+        )
+        return False
+    except Exception as e:
+        logging.error(
+            f"Unexpected error querying registry for agent {agent_identifier[:8]}...: {e}. "
+            "Assuming non-free agent."
+        )
+        return False
