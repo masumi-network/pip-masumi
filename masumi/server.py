@@ -9,6 +9,7 @@ import os
 import uuid
 from typing import Optional, Callable, Dict, Any, Awaitable, Union, Set
 from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 
 from .config import Config
@@ -154,7 +155,6 @@ class MasumiAgentServer:
                 f"Request validation failed (422) for {request.url.path}: "
                 f"errors={exc.errors()}, body={body.decode('utf-8', errors='replace')[:500]}"
             )
-            from fastapi.responses import JSONResponse
             return JSONResponse(status_code=422, content={"detail": exc.errors()})
         
         # Register all endpoints
