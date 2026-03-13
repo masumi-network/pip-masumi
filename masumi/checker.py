@@ -255,10 +255,19 @@ class MasumiChecker:
 
         results = []
 
+        # Free agents skip payment service; payment credentials not required
+        is_free_agent = os.getenv("IS_FREE_AGENT", "false").lower() == "true"
+        if is_free_agent:
+            results.append(CheckResult(
+                passed=True,
+                message="IS_FREE_AGENT=true: Payment service skipped (Registry Service only)",
+                level="info"
+            ))
+
         # Required variables with validation
         # AGENT_IDENTIFIER is a warning (server can start without it, but needed for full functionality)
-        # PAYMENT_API_KEY and SELLER_VKEY are required (errors)
-        required_vars = ["PAYMENT_API_KEY", "SELLER_VKEY"]
+        # PAYMENT_API_KEY and SELLER_VKEY are required for paid agents (errors)
+        required_vars = [] if is_free_agent else ["PAYMENT_API_KEY", "SELLER_VKEY"]
         missing_required = []
 
         # Check AGENT_IDENTIFIER separately (as warning)
@@ -372,16 +381,22 @@ class MasumiChecker:
             "https://payment.masumi.network/api/v1"
         )
 
-        # Keep /api/v1 and append /health
-        health_url = f"{payment_service_url}/health"
-
         try:
             async with aiohttp.ClientSession() as session:
+                health_url = f"{payment_service_url}/health"
                 async with session.get(health_url, timeout=aiohttp.ClientTimeout(total=5)) as response:
                     if response.status == 200:
                         return CheckResult(
                             passed=True,
                             message="Payment service reachable",
+                            level="info"
+                        )
+                    if response.status == 404:
+                        # Some deployments do not expose /health, but still serve API routes.
+                        return CheckResult(
+                            passed=True,
+                            message="Payment service reachable (health endpoint not exposed)",
+                            fix_hint=f"Health check returned 404 at {health_url}; verify API routes if requests fail.",
                             level="info"
                         )
                     else:
@@ -499,7 +514,8 @@ class MasumiChecker:
                         print(f"   → {result.fix_hint}")
 
             # Show required environment variables status (always show)
-            required_vars = ["AGENT_IDENTIFIER", "PAYMENT_API_KEY", "SELLER_VKEY"]
+            is_free = os.getenv("IS_FREE_AGENT", "false").lower() == "true"
+            required_vars = ["AGENT_IDENTIFIER"] + ([] if is_free else ["PAYMENT_API_KEY", "SELLER_VKEY"])
             required_status = []
             for var in required_vars:
                 # Find the result for this variable

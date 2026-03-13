@@ -180,15 +180,18 @@ class JobManager:
         
         if payment and job and job.get("payment_id"):
             payment_id = job.get("payment_id")
-            logger.info(f"Submitting result on-chain for job {job_id} (payment ID: {payment_id})")
-            logger.info(f"Result length: {len(result)} characters")
-            try:
-                # This will raise if submission fails, which is intended
-                await payment.complete_payment(payment_id, result)
-                logger.info(f"Result submitted on-chain successfully for job {job_id}")
-            except Exception as e:
-                logger.error(f"On-chain result submission FAILED for job {job_id}: {str(e)}")
-                raise
+            # Free agent jobs use FREE-* identifiers; skip payment service (no on-chain submission)
+            if payment_id.startswith("FREE-"):
+                logger.info(f"Free agent job {job_id} (payment ID: {payment_id}) — skipping on-chain submission")
+            else:
+                logger.info(f"Submitting result on-chain for job {job_id} (payment ID: {payment_id})")
+                logger.info(f"Result length: {len(result)} characters")
+                try:
+                    await payment.complete_payment(payment_id, result)
+                    logger.info(f"Result submitted on-chain successfully for job {job_id}")
+                except Exception as e:
+                    logger.error(f"On-chain result submission FAILED for job {job_id}: {str(e)}")
+                    raise
         else:
             reason = []
             if not payment: reason.append("payment instance missing")

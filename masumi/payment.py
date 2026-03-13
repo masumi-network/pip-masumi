@@ -3,6 +3,7 @@ from datetime import datetime, timezone, timedelta
 import asyncio
 import logging
 import json
+from decimal import Decimal, InvalidOperation
 from typing import List, Optional, Dict, Any, Set
 import aiohttp
 from .config import Config
@@ -68,6 +69,8 @@ class Payment:
         self.payment_type = "Web3CardanoV1"
         self.payment_ids: Set[str] = set()
         self._callback_triggered_ids: Set[str] = set()
+        self._logged_error_ids: Set[str] = set()  # Track payments with logged errors (separate from callbacks)
+        self._logged_warning_ids: Set[str] = set()  # Track payments with logged missing-fields warning (once per payment)
         self._callback_tasks: Set[asyncio.Task] = set()  # Track callback tasks to prevent memory leaks
         self.identifier_from_purchaser = identifier_from_purchaser
         self._status_check_task: Optional[asyncio.Task] = None
@@ -86,6 +89,89 @@ class Payment:
         logger.debug(f"Input hash: {self.input_hash}")
         #logger.debug(f"Payment amounts configured: {[f'{a.amount} {a.unit}' for a in amounts]}")
         logger.debug(f"Using purchaser identifier: {self.identifier_from_purchaser}")
+
+    @staticmethod
+    def _is_zero_value(value: Any) -> bool:
+        """Return True when the supplied value represents numeric zero."""
+        if value is None or isinstance(value, bool):
+            return False
+
+        if isinstance(value, (int, float, Decimal)):
+            return value == 0
+
+        if isinstance(value, str):
+            normalized = value.strip()
+            if not normalized:
+                return False
+            try:
+                return Decimal(normalized) == 0
+            except InvalidOperation:
+                return False
+
+        return False
+
+    @classmethod
+    def _is_free_payment(cls, payment: Dict[str, Any]) -> bool:
+        """
+        Detect whether the payment payload represents a zero-cost agent.
+
+        The payment service may return zero values as numbers or strings, and
+        may surface them as `price`, `amount`, or per-entry `amounts`.
+        """
+        if "price" in payment and cls._is_zero_value(payment.get("price")):
+            return True
+
+        if "amount" in payment and cls._is_zero_value(payment.get("amount")):
+            return True
+
+        amounts = payment.get("amounts")
+        if isinstance(amounts, list) and amounts:
+            return all(
+                isinstance(amount_entry, dict)
+                and cls._is_zero_value(amount_entry.get("amount"))
+                for amount_entry in amounts
+            )
+
+        return False
+
+    async def create_free_agent_mock_payment(self) -> Dict[str, Any]:
+        """
+        Create a mock payment response for free agents without hitting the payment service.
+        Free agents don't need blockchain interaction or on-chain fees.
+        """
+        import uuid
+
+        # Generate a unique ID for tracking (not blockchain)
+        free_payment_id = f"FREE-{uuid.uuid4().hex[:24]}"
+
+        # Set mock timestamps (not used for free agents but required by response model)
+        now = datetime.now(timezone.utc)
+        mock_time = int(now.timestamp())
+
+        logger.info(f"Creating mock payment for free agent: {free_payment_id}")
+
+        return {
+            "status": "success",
+            "data": {
+                "blockchainIdentifier": free_payment_id,
+                "payByTime": mock_time,
+                "submitResultTime": mock_time + 86400,  # +24 hours
+                "unlockTime": mock_time,
+                "externalDisputeUnlockTime": mock_time,
+                "agentIdentifier": self.agent_identifier,
+                "sellerVKey": "",  # No wallet needed for free agents
+                "identifierFromPurchaser": self.identifier_from_purchaser,
+                "inputHash": self.input_hash or "",
+                "isFreeAgent": True,  # Flag to indicate free agent
+                "onChainState": "FREE_AGENT"  # Special state
+            },
+            "time_values": {
+                "payByTime": mock_time,
+                "submitResultTime": mock_time + 86400,
+                "unlockTime": mock_time,
+                "externalDisputeUnlockTime": mock_time
+            }
+        }
 
     async def create_payment_request(self, metadata: Optional[str] = None) -> Dict[str, Any]:
         """
@@ -322,7 +408,9 @@ class Payment:
             callback (Callable, optional): Function to call when a payment is ready to process.
                 The callback is triggered when payment reaches either:
                 - FundsLocked state (PaymentOnChainState.FUNDS_LOCKED) for paid agents
-                - FundsOrDatumInvalid state (PaymentOnChainState.FUNDS_OR_DATUM_INVALID) for free agents
+                - FundsOrDatumInvalid state (PaymentOnChainState.FUNDS_OR_DATUM_INVALID) for free agents ONLY
+                  (validated by checking if price/amount is 0 in payment data)
+                Note: For paid agents, FundsOrDatumInvalid means an actual error and callback is NOT triggered.
                 The function will receive the full payment dict as its parameter.
                 Can be either a regular function or an async function.
                 The callback runs in a separate task to avoid blocking the monitoring loop.
@@ -414,11 +502,40 @@ class Payment:
                             
                             logger.debug(f"Payment {payment_id[:8]}...: state={on_chain_state}, action={next_action}")
 
-                            # Trigger callback when payment is ready to process
-                            # FundsLocked: Normal paid agents (payment received and locked)
-                            # FundsOrDatumInvalid: Free agents (0 cost - no funds to lock, but job should still execute)
-                            if (on_chain_state in [PaymentOnChainState.FUNDS_LOCKED.value, PaymentOnChainState.FUNDS_OR_DATUM_INVALID.value]
-                                and payment_id not in self._callback_triggered_ids):
+                            # Determine if we should trigger the callback based on on-chain state
+                            should_trigger_callback = False
+
+                            # FundsLocked: Always valid - payment received and locked (normal paid agents)
+                            if on_chain_state == PaymentOnChainState.FUNDS_LOCKED.value:
+                                should_trigger_callback = True
+
+                            # FundsOrDatumInvalid: Only valid for free agents (0 cost)
+                            # For paid agents, this state means funds/datum are genuinely invalid (wrong amount, etc.)
+                            elif on_chain_state == PaymentOnChainState.FUNDS_OR_DATUM_INVALID.value:
+                                is_free_agent = self._is_free_payment(payment)
+
+                                if is_free_agent:
+                                    logger.info(f"Payment {payment_id[:8]}... is a free agent (0 cost), accepting FundsOrDatumInvalid state")
+                                    should_trigger_callback = True
+                                else:
+                                    # Mark as logged to prevent error log spam on subsequent checks
+                                    # Use separate set from callback tracking to allow state transitions
+                                    if not any(k in payment for k in ("price", "amount", "amounts")):
+                                        if payment_id not in self._logged_warning_ids:
+                                            logger.warning(
+                                                f"Payment {payment_id[:8]}... hit FundsOrDatumInvalid but payment data "
+                                                "contains no price/amount/amounts field — cannot determine if free agent. "
+                                                "Treating as paid (not triggering callback)."
+                                            )
+                                            self._logged_warning_ids.add(payment_id)
+                                    if payment_id not in self._logged_error_ids:
+                                        logger.error(f"Payment {payment_id[:8]}... reached FundsOrDatumInvalid state but is NOT a free agent - this indicates invalid funds or datum. Not triggering callback.")
+                                        logger.error(f"Payment data: {payment}")
+                                        self._logged_error_ids.add(payment_id)
+                                    # Do not trigger callback - this is a genuine error for paid agents
+
+                            # Trigger callback if valid and not already triggered
+                            if should_trigger_callback and payment_id not in self._callback_triggered_ids:
                                 logger.info(f"Payment {payment_id[:8]}... reached {on_chain_state} state, triggering callback")
                                 self._callback_triggered_ids.add(payment_id)
                                 
@@ -449,16 +566,26 @@ class Payment:
                             # Remove from tracking when payment is actually complete
                             # This happens after the callback has processed the payment and submitted results
                             # Stop checking when result is submitted or payment reaches final withdrawal states
-                            if (on_chain_state in [
-                                PaymentOnChainState.RESULT_SUBMITTED.value
-
-                            ] or
-                                next_action == PaymentNextAction.NONE.value):
-                                
+                            # Also remove FundsOrDatumInvalid: paid agents (in _logged_error_ids) or free agents (in _callback_triggered_ids)
+                            # - both have this as a terminal state with no further transition
+                            is_complete = (
+                                on_chain_state == PaymentOnChainState.RESULT_SUBMITTED.value
+                                or next_action == PaymentNextAction.NONE.value
+                                or (
+                                    on_chain_state == PaymentOnChainState.FUNDS_OR_DATUM_INVALID.value
+                                    and (
+                                        payment_id in self._logged_error_ids
+                                        or payment_id in self._callback_triggered_ids
+                                    )
+                                )
+                            )
+                            if is_complete:
                                 logger.info(f"Payment {payment_id[:8]}... is complete, removing from tracking")
                                 payments_to_remove.append(payment_id)
                                 # Clean up tracking
                                 self._callback_triggered_ids.discard(payment_id)
+                                self._logged_error_ids.discard(payment_id)
+                                self._logged_warning_ids.discard(payment_id)
                                 payment_check_times.pop(payment_id, None)
                         
                         except Exception as e:
@@ -501,8 +628,10 @@ class Payment:
             logger.info("Stopping payment status monitoring")
             self._status_check_task.cancel()
             self._status_check_task = None
-            # Clean up callback tracking
+            # Clean up callback and error tracking
             self._callback_triggered_ids.clear()
+            self._logged_error_ids.clear()
+            self._logged_warning_ids.clear()
         
         # Cancel any pending callback tasks
         if self._callback_tasks:
