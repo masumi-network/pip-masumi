@@ -26,7 +26,7 @@ from .models import (
 from .endpoints import AgentEndpointHandler
 from .job_manager import JobManager, JobStorage, InMemoryJobStorage
 from .validation import validate_input_data, ValidationError
-from .helper_functions import setup_logging, create_masumi_input_hash
+from .helper_functions import setup_logging, create_masumi_input_hash, check_free_agent_from_registry
 from .models import JobStatus
 from .hitl import set_job_context, clear_job_context, provide_input_to_job
 
@@ -95,16 +95,11 @@ class MasumiAgentServer:
         # Load seller_vkey from environment if not provided
         if not seller_vkey:
             seller_vkey = os.getenv("SELLER_VKEY")
-        
-        # Validate seller_vkey is provided (not required for free agents)
-        is_free_agent = getattr(config, "free_agent", False)
-        if not seller_vkey and not is_free_agent:
-            raise ValueError(
-                "seller_vkey is required. Provide it directly or set SELLER_VKEY environment variable. "
-                "Get your seller_vkey from the admin interface after registering your agent."
-            )
+
+        # Note: seller_vkey validation moved to /start_job endpoint after registry check
+        # (registry determines if agent is free; free agents don't need seller_vkey)
         if not seller_vkey:
-            seller_vkey = ""  # Free agents use empty seller vkey
+            seller_vkey = ""  # Will be validated in start_job if not a free agent
         
         self.config = config
         self.agent_identifier = agent_identifier
@@ -203,8 +198,20 @@ class MasumiAgentServer:
                         detail="Start job handler not configured"
                     )
 
-                # Check if this is a free agent (from config; env var used by CLI when creating config)
-                is_free_agent = getattr(self.config, "free_agent", False)
+                # Check if this is a free agent by querying the registry
+                is_free_agent = await check_free_agent_from_registry(
+                    agent_identifier=self.agent_identifier,
+                    payment_service_url=self.config.payment_service_url,
+                    payment_api_key=self.config.payment_api_key,
+                    network=self.network
+                )
+
+                # Validate seller_vkey for paid agents
+                if not is_free_agent and not self.seller_vkey:
+                    raise HTTPException(
+                        status_code=500,
+                        detail="seller_vkey is required for paid agents. Set SELLER_VKEY environment variable or provide it when creating the server."
+                    )
 
                 # Create payment request or mock for free agent
                 payment = Payment(

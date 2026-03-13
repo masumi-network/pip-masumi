@@ -1,8 +1,9 @@
 class Config:
     """
     Centralized configuration for the masumi package.
-    
-    Holds configuration values for payment service, registry service, and network addresses.
+
+    Holds configuration values for payment service and network addresses.
+    The payment service URL also hosts the registry endpoint (/registry/{agent-identifier}).
     For free agents (free_agent=True), payment credentials are optional.
     """
 
