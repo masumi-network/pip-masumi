@@ -4,7 +4,7 @@ Pydantic models for MIP-003 request and response structures.
 
 from enum import Enum
 from typing import List, Optional, Dict, Any
-from pydantic import BaseModel, Field
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 
 
 class JobStatus(str, Enum):
@@ -43,12 +43,27 @@ class PaymentNextAction(str, Enum):
     AUTHORIZE_REFUND_INITIATED = "AuthorizeRefundInitiated"
 
 
+def _default_identifier() -> str:
+    """Default identifier when caller (e.g. Sokosumi) omits it."""
+    import uuid
+    return f"sokosumi-{uuid.uuid4().hex[:16]}"
+
+
 class StartJobRequest(BaseModel):
     """Request model for /start_job endpoint"""
-    identifier_from_purchaser: str = Field(..., description="Purchaser-defined identifier")
-    input_data: Optional[Dict[str, Any]] = Field(None, description="Input data matching the input schema")
+    identifier_from_purchaser: str = Field(
+        default_factory=_default_identifier,
+        alias="identifierFromPurchaser",
+        description="Purchaser-defined identifier (optional; generated if omitted)",
+    )
+    input_data: Optional[Dict[str, Any]] = Field(
+        None,
+        validation_alias=AliasChoices("inputData", "input_data", "input"),
+        description="Input data matching the input schema",
+    )
     
     class Config:
+        populate_by_name = True
         json_schema_extra = {
             "example": {
                 "identifier_from_purchaser": "resume-job-123",
@@ -70,11 +85,12 @@ class StartJobResponse(BaseModel):
     agentIdentifier: str = Field(..., description="Agent Identifier")
     sellerVKey: str = Field(..., description="Wallet Public Key")
     identifierFromPurchaser: str = Field(..., description="Echoes back the identifier from purchaser")
-    input_hash: str = Field(..., alias="input_hash", description="Hash of the input data")
+    input_hash: str = Field(..., alias="inputHash", description="Hash of the input data")
     
-    class Config:
-        populate_by_name = True
-        json_schema_extra = {
+    model_config = ConfigDict(
+        populate_by_name=True,
+        serialize_by_alias=True,  # MIP-003/Sokosumi expect camelCase (inputHash)
+        json_schema_extra={
             "example": {
                 "id": "18d66eed-6af5-4589-b53a-d2e78af657b6",
                 "blockchainIdentifier": "block_789def",
@@ -85,9 +101,10 @@ class StartJobResponse(BaseModel):
                 "agentIdentifier": "resume-wizard-v1",
                 "sellerVKey": "addr1qxlkjl23k4jlksdjfl234jlksdf",
                 "identifierFromPurchaser": "resume-job-123",
-                "input_hash": "a87ff679a2f3e71d9181a67b7542122c"
+                "inputHash": "a87ff679a2f3e71d9181a67b7542122c"
             }
-        }
+        },
+    )
 
 
 class StatusResponse(BaseModel):
@@ -229,5 +246,3 @@ class DemoResponse(BaseModel):
                 }
             }
         }
-
-

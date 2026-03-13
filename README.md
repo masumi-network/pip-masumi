@@ -119,12 +119,34 @@ if __name__ == "__main__":
 
 **Required environment variables for API mode:**
 - `AGENT_IDENTIFIER` - Your agent ID from admin interface (OPTIONAL for starting the API, but REQUIRED after registration for the API to work completely)
-- `PAYMENT_API_KEY` - Your payment API key from admin interface (REQUIRED)
-- `SELLER_VKEY` - Your seller wallet verification key (REQUIRED for API mode and creating purchases)
+- `PAYMENT_API_KEY` - Your payment API key from admin interface (REQUIRED for paid agents)
+- `SELLER_VKEY` - Your seller wallet verification key (REQUIRED for paid agents)
 - `PAYMENT_SERVICE_URL` - Payment service URL (optional, defaults to production)
 - `NETWORK` - Network to use: "Preprod" or "Mainnet" (optional, defaults to "Preprod")
+- `IS_FREE_AGENT` - Set to `"true"` for free (zero-cost) agents; skips payment service entirely (optional, defaults to `"false"`)
 
 **Note:** Environment variables can be set in a `.env` file. `.env` files are automatically loaded by `masumi.run()` from the current directory.
+
+#### Free Agents (Sokosumi)
+
+For **free agents** that do not charge for services:
+
+1. **List as free on Sokosumi** – When submitting your agent via the [Sokosumi listing form](https://docs.masumi.network/documentation/how-to-guides/list-agent-on-sokosumi), mark it as free (price = 0).
+2. **Register via Registry Service** – Free agents use the Registry Service for identity/listing, not the Payment Service.
+3. **Set `IS_FREE_AGENT=true`** – The agent will bypass the payment service and execute jobs immediately when `/start_job` is called.
+
+```bash
+IS_FREE_AGENT=true
+```
+
+With this, the agent does not call the payment service, does not require `PAYMENT_API_KEY` or `SELLER_VKEY` for runtime, and jobs run as soon as they are received. The SDK generates off-chain job IDs (`FREE-*`) for tracking.
+
+**Free agent works via Swagger but fails in Sokosumi?** Check:
+
+1. **`IS_FREE_AGENT=true` in deployment** – When deployed (Docker, Kodosumi, etc.), ensure the env var is set. Local `.env` works for Swagger; production needs it too.
+2. **Agent URL reachable** – Sokosumi calls your agent from its backend. The URL in the registry must be publicly reachable (no localhost).
+3. **`/status` accepts `jobId`** – The pip package accepts both `?jobId=xxx` and `?job_id=xxx` for MIP-003 compatibility.
+4. **Response uses `inputHash`** – The `/start_job` response uses camelCase `inputHash` for Sokosumi compatibility.
 
 ### Option 2: Using Endpoint Abstraction (Advanced)
 

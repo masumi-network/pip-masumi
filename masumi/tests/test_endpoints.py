@@ -2,13 +2,19 @@
 Tests for endpoint handlers, validation, and FastAPI integration.
 """
 
+import os
 import pytest
 import asyncio
+from unittest.mock import patch, AsyncMock
+from fastapi.testclient import TestClient
+
 from masumi.endpoints import AgentEndpointHandler
+from masumi.models import StartJobRequest
 from masumi.validation import validate_input_data, ValidationError
 from masumi.job_manager import JobManager, InMemoryJobStorage
 from masumi.config import Config
 from masumi.payment import Payment
+from masumi.server import create_masumi_app
 
 
 @pytest.fixture
@@ -359,6 +365,159 @@ def test_job_manager(mock_config):
     job = asyncio.run(manager.get_job(job_id))
     assert job["status"] == "running"
     assert job["result"] is None
+
+
+def test_start_job_request_accepts_camel_case():
+    """StartJobRequest should accept the admin/UI camelCase payload shape."""
+    request = StartJobRequest.model_validate(
+        {
+            "identifierFromPurchaser": "buyer-123",
+            "inputData": {"text": "hello"},
+        }
+    )
+
+    assert request.identifier_from_purchaser == "buyer-123"
+    assert request.input_data == {"text": "hello"}
+
+
+def test_start_job_request_accepts_snake_case():
+    """StartJobRequest should remain backwards-compatible with snake_case payloads."""
+    request = StartJobRequest.model_validate(
+        {
+            "identifier_from_purchaser": "buyer-123",
+            "input_data": {"text": "hello"},
+        }
+    )
+
+    assert request.identifier_from_purchaser == "buyer-123"
+    assert request.input_data == {"text": "hello"}
+
+
+@pytest.mark.parametrize(
+    ("payment_payload", "expected"),
+    [
+        ({"price": 0}, True),
+        ({"price": "0"}, True),
+        ({"price": "0.0"}, True),
+        ({"amount": 0}, True),
+        ({"amount": "0"}, True),
+        ({"amounts": [{"amount": 0}, {"amount": "0"}]}, True),
+        ({"price": 1}, False),
+        ({"amount": "1"}, False),
+        ({"amounts": [{"amount": 0}, {"amount": 1}]}, False),
+        ({}, False),
+    ],
+)
+def test_payment_free_agent_detection(payment_payload, expected):
+    """Zero-cost payments should be detected across numeric and string payload shapes."""
+    assert Payment._is_free_payment(payment_payload) is expected
+
+
+@pytest.mark.asyncio
+async def test_create_free_agent_mock_payment_returns_off_chain_shape(mock_config):
+    """Free agent mock payment must be off-chain: FREE- id, isFreeAgent, no payment service call."""
+    payment = Payment(
+        agent_identifier="test-agent",
+        config=mock_config,
+        network="Preprod",
+        identifier_from_purchaser="purchaser-1",
+        input_data={"text": "hello"},
+    )
+    result = await payment.create_free_agent_mock_payment()
+
+    assert result["status"] == "success"
+    data = result["data"]
+    assert data["blockchainIdentifier"].startswith("FREE-")
+    assert data["isFreeAgent"] is True
+    assert data["onChainState"] == "FREE_AGENT"
+    assert data["sellerVKey"] == ""
+    assert data["agentIdentifier"] == "test-agent"
+    assert data["identifierFromPurchaser"] == "purchaser-1"
+    assert "payByTime" in data and "submitResultTime" in data
+
+
+@pytest.mark.asyncio
+async def test_free_agent_start_job_does_not_call_payment_service(mock_config):
+    """With config.free_agent=True, /start_job must not call payment service or start_status_monitoring."""
+    job_executed = []
+
+    free_agent_config = Config(
+        payment_service_url=mock_config.payment_service_url,
+        payment_api_key=mock_config.payment_api_key,
+        free_agent=True,
+    )
+
+    @patch.object(Payment, "create_payment_request", new_callable=AsyncMock)
+    @patch.object(Payment, "start_status_monitoring", new_callable=AsyncMock)
+    async def _run(create_mock, monitor_mock):
+        async def start_job_handler(identifier: str, input_data: dict):
+            job_executed.append((identifier, input_data))
+            return {"result": "done"}
+
+        app = create_masumi_app(
+            config=free_agent_config,
+            agent_identifier="free-agent-test",
+            network="Preprod",
+            start_job_handler=start_job_handler,
+            input_schema_handler={"input_data": [{"id": "text", "type": "string"}]},
+            seller_vkey="test-seller-vkey",
+        )
+        with TestClient(app) as client:
+            resp = client.post(
+                "/start_job",
+                json={
+                    "identifierFromPurchaser": "buyer-1",
+                    "inputData": {"text": "hello"},
+                },
+            )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["blockchainIdentifier"].startswith("FREE-")
+        assert "id" in body
+        create_mock.assert_not_called()
+        monitor_mock.assert_not_called()
+        return body
+
+    body = await _run()
+    assert body["blockchainIdentifier"].startswith("FREE-")
+
+
+@pytest.mark.asyncio
+async def test_free_agent_job_executes_immediately(mock_config):
+    """Free agent returns 200 with FREE- id; job is scheduled off-chain (no payment wait)."""
+    free_agent_config = Config(
+        payment_service_url=mock_config.payment_service_url,
+        payment_api_key=mock_config.payment_api_key,
+        free_agent=True,
+    )
+
+    async def _run():
+        async def start_job_handler(identifier: str, input_data: dict):
+            return {"result": "free-agent-result"}
+
+        app = create_masumi_app(
+            config=free_agent_config,
+            agent_identifier="free-agent-test",
+            network="Preprod",
+            start_job_handler=start_job_handler,
+            input_schema_handler={"input_data": [{"id": "text", "type": "string"}]},
+            seller_vkey="test-seller-vkey",
+        )
+        with TestClient(app) as client:
+            resp = client.post(
+                "/start_job",
+                json={
+                    "identifierFromPurchaser": "buyer-1",
+                    "inputData": {"text": "hello"},
+                },
+            )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["blockchainIdentifier"].startswith("FREE-")
+        assert "id" in data
+        # Free agent path: no payment service, job is scheduled via create_task
+
+    await _run()
 
 
 @pytest.mark.asyncio
