@@ -213,7 +213,8 @@ def test_validation_with_validations_array():
 
 
 def test_validation_optional_field():
-    """Test validating optional fields."""
+    """Test validating optional fields - value field is not required for 'optional' type."""
+    # MIP-003: optional validation should work without a value field
     schema = {
         "input_data": [
             {
@@ -226,21 +227,35 @@ def test_validation_optional_field():
                 "type": "text",
                 "name": "Optional Field",
                 "validations": [
-                    {"validation": "optional", "value": "true"}
+                    {"validation": "optional"}  # No value needed per MIP-003
                 ]
             }
         ]
     }
-    
+
     # Valid - both fields provided
     validate_input_data({"required_field": "value", "optional_field": "value"}, schema)
-    
-    # Valid - optional field missing
+
+    # Valid - optional field missing (the key use case)
     validate_input_data({"required_field": "value"}, schema)
-    
+
     # Invalid - required field missing
     with pytest.raises(ValidationError):
         validate_input_data({"optional_field": "value"}, schema)
+
+    # Backward compat: optional WITH value still works
+    schema_with_value = {
+        "input_data": [
+            {"id": "required_field", "type": "text", "name": "Required Field"},
+            {
+                "id": "optional_field",
+                "type": "text",
+                "name": "Optional Field",
+                "validations": [{"validation": "optional", "value": "true"}]
+            }
+        ]
+    }
+    validate_input_data({"required_field": "value"}, schema_with_value)
 
 
 def test_validation_format_validation():

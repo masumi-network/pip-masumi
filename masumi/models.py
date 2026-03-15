@@ -158,7 +158,7 @@ class AvailabilityResponse(BaseModel):
 class ValidationRule(BaseModel):
     """Validation rule structure"""
     validation: str = Field(..., description="Type of validation (min, max, format, accept, optional)")
-    value: str = Field(..., description="Validation value")
+    value: Optional[str] = Field(default="", description="Validation value (not required for 'optional' validation type)")
 
 
 class InputField(BaseModel):
